@@ -1,0 +1,42 @@
+Project tree generated on: Sat Dec 27 18:11:29 IST 2025
+.
+├── .github
+│   └── workflows
+│       └── ci.yml
+├── Makefile
+├── README.md
+├── REPORT.md
+├── api
+├── artifacts
+│   ├── metrics
+│   └── plots
+├── data
+│   ├── processed
+│   └── raw
+├── deployment
+│   ├── docker
+│   │   └── Dockerfile
+│   └── k8s
+│       ├── deployment.yaml
+│       ├── ingress.yaml
+│       └── service.yaml
+├── docs
+│   └── project_tree.txt
+├── models
+├── notebooks
+├── requirements.txt
+├── screenshots
+├── src
+│   └── heartml
+│       ├── __init__.py
+│       ├── config.py
+│       ├── data_ingest.py
+│       ├── data_validate.py
+│       ├── evaluate.py
+│       ├── predict.py
+│       ├── preprocess.py
+│       ├── train.py
+│       └── utils.py
+└── tests
+
+20 directories, 19 files
