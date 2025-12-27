@@ -22,6 +22,7 @@ env/
 # Logs
 *.log
 
-# Optional: artifacts (uncomment if donot want  to version them)
-# artifacts/
-# models/
+# Generated pipeline outputs (do not commit)
+data/
+artifacts/
+models/
