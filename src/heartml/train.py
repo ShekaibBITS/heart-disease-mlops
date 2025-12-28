@@ -37,6 +37,13 @@ from sklearn.model_selection import (  # CV and tuning
     GridSearchCV,  # Hyperparameter search
 )
 
+# Import mlflow for experiment tracking
+import mlflow  # MLflow tracking
+import mlflow.sklearn  # Sklearn model logging
+from mlflow.models.signature import infer_signature  # Signature inference for model logging
+
+from typing import Optional  # Type hints for compatibility with Python 3.9
+
 # Import project modules for data acquisition and preprocessing
 from .data_ingest import load_or_download  # Download/cache dataset
 from .preprocess import clean_dataset, split_and_scale, save_processed_artifacts  # Cleaning + scaling
@@ -69,6 +76,8 @@ from .config import (  # Central constants
     MODEL_COMPARISON_PATH,  # Comparison CSV path
     METRICS_JSON_PATH,  # Metrics JSON path
     PLOTS_DIR,  # Plots folder
+    MLFLOW_EXPERIMENT_NAME,  # MLflow experiment name
+    MLFLOW_TRACKING_URI,  # MLflow tracking URI
 )  # Imports from config
 
 # Import helpers for directory creation and JSON saving
@@ -108,6 +117,89 @@ def evaluate_model(name: str, model, X_train, y_train, X_test, y_test) -> dict:
     # Return results
     return result  # Used for reporting and artifact creation
 
+# def log_common_run_context(model_name: str) -> None:
+#     """Log common context fields to MLflow to make runs comparable and auditable."""
+
+#     # Log a standard model name tag
+#     mlflow.set_tag("model_name", model_name)  # Human-friendly run tag
+
+#     # Log project stage tag
+#     mlflow.set_tag("stage", "training")  # Helps filtering in UI
+
+#     # Log library versions (useful for reproducibility debugging)
+#     mlflow.log_param("python_version", f"{np.__version__}")  # Minimal example; optional
+#     mlflow.log_param("numpy_version", f"{np.__version__}")  # Numpy version
+#     mlflow.log_param("pandas_version", f"{pd.__version__}")  # Pandas version  
+
+def configure_mlflow() -> None:
+    """Configure MLflow tracking URI and experiment (local file store)."""
+
+    # Set tracking URI (local file-based store)
+    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)  # Local tracking
+
+    # Set/create experiment
+    mlflow.set_experiment(MLFLOW_EXPERIMENT_NAME)  # Experiment grouping
+
+
+def log_model_run(
+    run_name: str,
+    model_label: str,
+    model_obj,
+    train_metrics: dict,
+    test_metrics: dict,
+    cv_mean: float,
+    cv_std: float,
+    input_example: Optional[pd.DataFrame] = None,
+    signature=None,
+    extra_params: Optional[dict] = None,
+) -> None:
+    """Log a single model run to MLflow (params, metrics, artifacts, model)."""
+
+    # Start a run in MLflow
+    with mlflow.start_run(run_name=run_name):  # One run per model for comparability
+        # Tag the run with a human-friendly model label
+        mlflow.set_tag("model_name", model_label)  # Tag for filtering in UI
+
+        # Log basic run parameters (common)
+        mlflow.log_param("model_label", model_label)  # Model name
+        mlflow.log_param("random_state", RANDOM_STATE)  # Seed
+        mlflow.log_param("cv_folds", CV_FOLDS)  # CV folds
+
+        # Log extra model-specific parameters (if provided)
+        if extra_params:  # Only if extra params exist
+            for k, v in extra_params.items():  # Iterate params
+                mlflow.log_param(k, v)  # Log param to MLflow
+
+        # Log CV metrics
+        mlflow.log_metric("cv_accuracy_mean", float(cv_mean))  # CV mean
+        mlflow.log_metric("cv_accuracy_std", float(cv_std))  # CV std
+
+        # Log train metrics (keys match compute_metrics)
+        mlflow.log_metric("train_accuracy", float(train_metrics["accuracy"]))  # Train accuracy
+        mlflow.log_metric("train_precision", float(train_metrics["precision"]))  # Train precision
+        mlflow.log_metric("train_recall", float(train_metrics["recall"]))  # Train recall
+        mlflow.log_metric("train_f1", float(train_metrics["f1"]))  # Train F1
+        mlflow.log_metric("train_roc_auc", float(train_metrics["roc_auc"]))  # Train ROC-AUC
+
+        # Log test metrics (keys match compute_metrics)
+        mlflow.log_metric("test_accuracy", float(test_metrics["accuracy"]))  # Test accuracy
+        mlflow.log_metric("test_precision", float(test_metrics["precision"]))  # Test precision
+        mlflow.log_metric("test_recall", float(test_metrics["recall"]))  # Test recall
+        mlflow.log_metric("test_f1", float(test_metrics["f1"]))  # Test F1
+        mlflow.log_metric("test_roc_auc", float(test_metrics["roc_auc"]))  # Test ROC-AUC
+
+        # Log artifacts folders (plots + metrics CSV/JSON)
+        mlflow.log_artifacts(str(PLOTS_DIR), artifact_path="plots")  # Save plots
+        mlflow.log_artifacts(str(METRICS_DIR), artifact_path="metrics")  # Save metrics files
+
+        # Log model object -- Persist model in MLflow
+        mlflow.sklearn.log_model(
+        model_obj,  # Model object
+        name="model",  # New MLflow argument (replaces artifact_path)
+        input_example=input_example,  # Helps infer signature automatically
+        signature=signature,  # Explicit signature to avoid dtype warnings
+        )
+
 
 def main() -> None:
     """Main training entry point."""
@@ -116,6 +208,12 @@ def main() -> None:
     ensure_dir(MODEL_DIR)  # Ensure models directory
     ensure_dir(PLOTS_DIR)  # Ensure plots directory
     ensure_dir(METRICS_DIR)  # Ensure metrics directory
+
+    # -----------------------------
+    # Step 0: MLflow configuration
+    # -----------------------------
+
+    configure_mlflow()  # Configure experiment tracking
 
     # -----------------------------
     # Step 1: Data acquisition
@@ -138,6 +236,11 @@ def main() -> None:
     # Split into train/test and scale numerical features
     X_train, X_test, y_train, y_test, scaler = split_and_scale(df_clean)  # Prepared features
 
+    # Create a single-row input example for MLflow signature inference.
+    # Cast to float to avoid integer-missing schema enforcement issues.
+    input_example = X_train.head(1).astype(float)
+
+
     # Save cleaned data and scaler for reproducibility (Task 4 foundation)
     save_processed_artifacts(df_clean, scaler)  # Persist artifacts
 
@@ -154,6 +257,7 @@ def main() -> None:
 
     # Fit model on training data
     lr_model.fit(X_train, y_train)  # Train LR
+    lr_signature = infer_signature(input_example, lr_model.predict_proba(input_example)[:, 1])
 
     # Cross-validation on training data (accuracy scoring, stratified folds)
     cv_lr = cross_val_score(  # Compute CV scores
@@ -180,6 +284,7 @@ def main() -> None:
 
     # Fit model on training data
     rf_model.fit(X_train, y_train)  # Train RF
+    rf_signature = infer_signature(input_example, rf_model.predict_proba(input_example)[:, 1])
 
     # Cross-validation for RF on training data
     cv_rf = cross_val_score(  # Compute CV scores
@@ -209,6 +314,7 @@ def main() -> None:
 
     # Extract the best estimator (tuned Random Forest)
     rf_tuned = grid_search.best_estimator_  # Best model from search
+    rft_signature = infer_signature(input_example, rf_tuned.predict_proba(input_example)[:, 1])
 
     # -----------------------------
     # Step 7: Evaluate all models
@@ -336,6 +442,70 @@ def main() -> None:
 
     # Save metrics JSON using helper
     save_json(metrics_payload, METRICS_JSON_PATH)  # Persist metrics payload
+
+
+    # -----------------------------
+
+    # Step 11: MLflow experiment tracking (Task 3)
+
+    # -----------------------------
+
+    # Log Logistic Regression run
+    log_model_run(
+        run_name="LogisticRegression_baseline",
+        model_label="Logistic Regression",
+        model_obj=lr_model,
+        train_metrics=lr_result["train"],
+        test_metrics=lr_result["test"],
+        cv_mean=float(cv_lr.mean()),
+        cv_std=float(cv_lr.std()),
+        input_example=input_example,
+        signature=lr_signature,
+        extra_params={
+            "model_type": "logistic_regression",
+            "max_iter": LR_MAX_ITER,
+            "solver": LR_SOLVER,
+        },
+    )
+
+    # Log Random Forest baseline run
+    log_model_run(
+        run_name="RandomForest_baseline",
+        model_label="Random Forest",
+        model_obj=rf_model,
+        train_metrics=rf_result["train"],
+        test_metrics=rf_result["test"],
+        cv_mean=float(cv_rf.mean()),
+        cv_std=float(cv_rf.std()),
+        input_example=input_example,
+        signature=rf_signature,
+        extra_params={
+            "model_type": "random_forest",
+            "n_estimators": RF_N_ESTIMATORS,
+            "max_depth": RF_MAX_DEPTH,
+            "min_samples_split": RF_MIN_SAMPLES_SPLIT,
+            "min_samples_leaf": RF_MIN_SAMPLES_LEAF,
+            "n_jobs": RF_N_JOBS,
+        },
+    )
+
+    # Log Tuned Random Forest run
+    log_model_run(
+        run_name="RandomForest_tuned",
+        model_label="Tuned Random Forest",
+        model_obj=rf_tuned,
+        train_metrics=rft_result["train"],
+        test_metrics=rft_result["test"],
+        cv_mean=float(grid_search.best_score_),
+        cv_std=0.0,  # GridSearch does not provide std directly in this script
+        input_example=input_example,
+        signature=rft_signature,
+        extra_params={
+            "model_type": "random_forest_gridsearch",
+            "param_grid": str(RF_PARAM_GRID),
+            **{f"best_{k}": v for k, v in grid_search.best_params_.items()},
+        },
+    )
 
     # Print output locations for convenience
     print("\nArtifacts written:")  # Header

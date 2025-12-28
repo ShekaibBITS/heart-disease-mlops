@@ -20,7 +20,7 @@ DATASET_URL = (
     "https://archive.ics.uci.edu/ml/machine-learning-databases/heart-disease/processed.cleveland.data"
 )  # Public dataset endpoint
 
-# Define the feature/column names exactly as used in the notebook
+# Define the feature/column names
 FEATURE_NAMES = [
     "age", "sex", "cp", "trestbps", "chol", "fbs",
     "restecg", "thalach", "exang", "oldpeak",
@@ -28,10 +28,10 @@ FEATURE_NAMES = [
 ]  # 13 features + 1 target
 
 # Define which features are treated as numerical (scaled)
-NUMERICAL_FEATURES = ["age", "trestbps", "chol", "thalach", "oldpeak"]  # As per notebook
+NUMERICAL_FEATURES = ["age", "trestbps", "chol", "thalach", "oldpeak"] 
 
 # Define which features are treated as categorical/binary (left unscaled)
-CATEGORICAL_FEATURES = ["sex", "cp", "fbs", "restecg", "exang", "slope", "ca", "thal"]  # Remaining inputs
+CATEGORICAL_FEATURES = ["sex", "cp", "fbs", "restecg", "exang", "slope", "ca", "thal"]
 
 # Define the column that represents the label
 TARGET_COL = "target"  # Output label column name
@@ -40,31 +40,31 @@ TARGET_COL = "target"  # Output label column name
 # Train/test split configuration
 # -----------------------------
 
-# Define test split size (same as notebook: 20%)
+# Define test split size
 TEST_SIZE = 0.20  # Fraction of samples used for testing
 
-# Define random seed (same as notebook)
+# Define random seed 
 RANDOM_STATE = 42  # Seed for reproducibility
 
 # -----------------------------
 # Model training configuration
 # -----------------------------
 
-# Logistic Regression defaults used in the notebook
+# Logistic Regression defaults
 LR_MAX_ITER = 1000  # Ensure convergence
 LR_SOLVER = "lbfgs"  # Standard solver for binary classification
 
-# Random Forest defaults used in the notebook
+# Random Forest defaults
 RF_N_ESTIMATORS = 100  # Number of trees
 RF_MAX_DEPTH = 10  # Max depth per tree
 RF_MIN_SAMPLES_SPLIT = 5  # Minimum samples required to split an internal node
 RF_MIN_SAMPLES_LEAF = 2  # Minimum samples required to be at a leaf node
 RF_N_JOBS = -1  # Use all CPU cores
 
-# Cross-validation configuration (same as notebook: 5 folds)
+# Cross-validation configuration
 CV_FOLDS = 5  # Number of folds for StratifiedKFold CV
 
-# Grid-search hyperparameter grid (mirrors notebook intent; kept small for speed)
+# Grid-search hyperparameter grid  (kept small for speed)
 RF_PARAM_GRID = {
     "n_estimators": [100, 200],  # Candidate number of trees
     "max_depth": [8, 10, 12],  # Candidate maximum depths
@@ -77,7 +77,7 @@ RF_PARAM_GRID = {
 # -----------------------------
 
 # Define where to store raw downloaded data
-RAW_DATA_PATH = PROJECT_ROOT / "data" / "raw" / "processed.cleveland.csv"  # Stored as CSV for convenience
+RAW_DATA_PATH = PROJECT_ROOT / "data" / "raw" / "processed.cleveland.csv"  # Stored as CSV
 
 # Define where to store cleaned/processed data
 PROCESSED_DATA_PATH = PROJECT_ROOT / "data" / "processed" / "heart_disease_clean.csv"  # Cleaned dataset
@@ -98,3 +98,16 @@ PLOTS_DIR = PROJECT_ROOT / "artifacts" / "plots"  # Folder for images
 METRICS_DIR = PROJECT_ROOT / "artifacts" / "metrics"  # Folder for metrics
 MODEL_COMPARISON_PATH = METRICS_DIR / "model_comparison.csv"  # Model comparison table
 METRICS_JSON_PATH = METRICS_DIR / "metrics.json"  # Full metrics dump as JSON
+# =========================
+# MLflow configuration for local experiment tracking.
+# The tracking URI is set to a local file store to keep the workflow simple and reproducible.
+# =========================
+
+# MLflow experiment name (appears in the MLflow UI)
+MLFLOW_EXPERIMENT_NAME = "heart-disease-uci"  # Experiment label
+
+# Local tracking store directory (file-based)
+MLFLOW_TRACKING_DIR = Path("mlruns")  # Folder created by MLflow runs
+
+# Tracking URI (explicit file path ensures consistent behavior across shells/IDEs)
+MLFLOW_TRACKING_URI = f"file:{MLFLOW_TRACKING_DIR.resolve()}"  # Local file store URI

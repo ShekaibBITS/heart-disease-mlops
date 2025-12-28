@@ -26,3 +26,6 @@ env/
 data/
 artifacts/
 models/
+# MLflow Local tracking
+mlruns/
+mlartifacts/

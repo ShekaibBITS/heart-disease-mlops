@@ -1,18 +1,78 @@
-Project tree generated on: Sat Dec 27 18:11:29 IST 2025
+Project tree generated on: Sun Dec 28 01:42:47 IST 2025
 .
 ├── .github
 │   └── workflows
 │       └── ci.yml
+├── .gitignore
+├── .venv
+│   ├── bin
+│   │   ├── Activate.ps1
+│   │   ├── activate
+│   │   ├── activate.csh
+│   │   ├── activate.fish
+│   │   ├── alembic
+│   │   ├── f2py
+│   │   ├── fastapi
+│   │   ├── flask
+│   │   ├── fonttools
+│   │   ├── gunicorn
+│   │   ├── mako-render
+│   │   ├── mlflow
+│   │   ├── normalizer
+│   │   ├── numpy-config
+│   │   ├── pip
+│   │   ├── pip3
+│   │   ├── pip3.9
+│   │   ├── py.test
+│   │   ├── pyftmerge
+│   │   ├── pyftsubset
+│   │   ├── pygmentize
+│   │   ├── pyrsa-decrypt
+│   │   ├── pyrsa-encrypt
+│   │   ├── pyrsa-keygen
+│   │   ├── pyrsa-priv2pub
+│   │   ├── pyrsa-sign
+│   │   ├── pyrsa-verify
+│   │   ├── pytest
+│   │   ├── python -> python3
+│   │   ├── python3 -> /Library/Developer/CommandLineTools/usr/bin/python3
+│   │   ├── python3.9 -> python3
+│   │   ├── ruff
+│   │   ├── sqlformat
+│   │   ├── tabulate
+│   │   ├── ttx
+│   │   ├── uvicorn
+│   │   └── wheel
+│   └── pyvenv.cfg
+├── .vscode
+│   ├── settings.json
+│   └── temp.txt
 ├── Makefile
 ├── README.md
 ├── REPORT.md
-├── api
 ├── artifacts
 │   ├── metrics
+│   │   ├── data_describe.csv
+│   │   ├── data_describe.md
+│   │   ├── data_head.csv
+│   │   ├── metrics.json
+│   │   ├── missing_values.csv
+│   │   └── model_comparison.csv
 │   └── plots
+│       ├── class_distribution.png
+│       ├── cm_logistic_regression.png
+│       ├── cm_random_forest.png
+│       ├── cm_random_forest_tuned.png
+│       ├── correlation_heatmap.png
+│       ├── correlation_heatmap_annotated.png
+│       ├── numerical_distributions.png
+│       ├── numerical_distributions_mean_median.png
+│       └── roc_curves.png
 ├── data
 │   ├── processed
+│   │   └── heart_disease_clean.csv
 │   └── raw
+│       └── processed.cleveland.csv
 ├── deployment
 │   ├── docker
 │   │   └── Dockerfile
@@ -23,20 +83,24 @@ Project tree generated on: Sat Dec 27 18:11:29 IST 2025
 ├── docs
 │   └── project_tree.txt
 ├── models
-├── notebooks
+│   ├── logistic_regression_model.joblib
+│   ├── random_forest_model.joblib
+│   ├── random_forest_tuned_model.joblib
+│   └── scaler.joblib
 ├── requirements.txt
-├── screenshots
-├── src
-│   └── heartml
-│       ├── __init__.py
-│       ├── config.py
-│       ├── data_ingest.py
-│       ├── data_validate.py
-│       ├── evaluate.py
-│       ├── predict.py
-│       ├── preprocess.py
-│       ├── train.py
-│       └── utils.py
-└── tests
+├── scripts
+│   └── run_pipeline.py
+└── src
+    └── heartml
+        ├── __init__.py
+        ├── config.py
+        ├── data_ingest.py
+        ├── data_validate.py
+        ├── eda.py
+        ├── evaluate.py
+        ├── predict.py
+        ├── preprocess.py
+        ├── train.py
+        └── utils.py
 
-20 directories, 19 files
+20 directories, 83 files
