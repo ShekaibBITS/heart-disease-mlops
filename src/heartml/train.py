@@ -17,13 +17,13 @@ Run (from project root):
 """
 
 # Import json for writing structured metrics (optional; we use helper save_json)
-import json  # Standard library JSON
+# import json  # Standard library JSON
 
 # Import pandas for creating comparison tables
 import pandas as pd  # DataFrame utilities
 
 # Import numpy for numeric operations
-import numpy as np  # Numerical utilities
+# import numpy as np  # Numerical utilities
 
 # Import joblib for serializing trained models
 import joblib  # Serialization (same as notebook)

@@ -20,7 +20,7 @@ from typing import Tuple  # Improves readability and IDE support
 import pandas as pd  # Data manipulation
 
 # Import numpy for numeric utilities
-import numpy as np  # Numerical computing
+# import numpy as np  # Numerical computing
 
 # Import scikit-learn utilities for splitting and scaling
 from sklearn.model_selection import train_test_split  # Train/test split
