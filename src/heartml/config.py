@@ -98,6 +98,10 @@ PLOTS_DIR = PROJECT_ROOT / "artifacts" / "plots"  # Folder for images
 METRICS_DIR = PROJECT_ROOT / "artifacts" / "metrics"  # Folder for metrics
 MODEL_COMPARISON_PATH = METRICS_DIR / "model_comparison.csv"  # Model comparison table
 METRICS_JSON_PATH = METRICS_DIR / "metrics.json"  # Full metrics dump as JSON
+
+# Canonical best-model path for serving (chosen automatically after training)
+BEST_MODEL_PATH = MODEL_DIR / "best_model.joblib"  # API loads this model
+
 # =========================
 # MLflow configuration for local experiment tracking.
 # The tracking URI is set to a local file store to keep the workflow simple and reproducible.

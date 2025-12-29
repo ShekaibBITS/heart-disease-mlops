@@ -78,6 +78,7 @@ from .config import (  # Central constants
     PLOTS_DIR,  # Plots folder
     MLFLOW_EXPERIMENT_NAME,  # MLflow experiment name
     MLFLOW_TRACKING_URI,  # MLflow tracking URI
+    BEST_MODEL_PATH,  # Canonical best model for serving
 )  # Imports from config
 
 # Import helpers for directory creation and JSON saving
@@ -337,6 +338,23 @@ def main() -> None:
     print_classification_report(y_test, rft_result["y_test_pred"], "Tuned Random Forest - Classification Report")  # Tuned RF report
 
     # -----------------------------
+    # Step 7.1: Select best model (no hardcoding)
+    # -----------------------------
+
+    # Collect candidates as (name, model_object, test_roc_auc)
+    candidates = [
+        ("logistic_regression", lr_model, float(lr_result["test"]["roc_auc"])),  # LR
+        ("random_forest", rf_model, float(rf_result["test"]["roc_auc"])),  # RF
+        ("random_forest_tuned", rf_tuned, float(rft_result["test"]["roc_auc"])),  # Tuned RF
+    ]
+
+    # Pick the model with the highest ROC-AUC on the test set
+    best_name, best_model, best_score = max(candidates, key=lambda x: x[2])  # Select best
+
+    # Print selection (useful for logs/report evidence)
+    print(f"\nBest model selected: {best_name} (test ROC-AUC = {best_score:.4f})")  # Traceability
+
+    # -----------------------------
     # Step 8: Save plots (confusion matrices + ROC curves)
     # -----------------------------
 
@@ -377,10 +395,12 @@ def main() -> None:
     # Step 9: Save trained models
     # -----------------------------
 
-    # Persist models using joblib (same approach as notebook)
+    # Persist models using joblib
     joblib.dump(lr_model, LR_MODEL_PATH)  # Save Logistic Regression model
     joblib.dump(rf_model, RF_MODEL_PATH)  # Save Random Forest model
     joblib.dump(rf_tuned, RF_TUNED_MODEL_PATH)  # Save Tuned Random Forest model
+    # Persist best model under canonical name for serving
+    joblib.dump(best_model, BEST_MODEL_PATH)  # API will load this
 
     # -----------------------------
     # Step 10: Save metrics artifacts

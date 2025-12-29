@@ -1,9 +1,24 @@
-Project tree generated on: Sun Dec 28 01:42:47 IST 2025
+Project tree generated on: Mon Dec 29 12:48:57 IST 2025
 .
 ├── .github
 │   └── workflows
 │       └── ci.yml
 ├── .gitignore
+├── .pytest_cache
+│   ├── .gitignore
+│   ├── CACHEDIR.TAG
+│   ├── README.md
+│   └── v
+│       └── cache
+│           ├── lastfailed
+│           └── nodeids
+├── .ruff_cache
+│   ├── .gitignore
+│   ├── 0.14.10
+│   │   ├── 10847566046999996569
+│   │   ├── 16363476957816507343
+│   │   └── 6618870475110866985
+│   └── CACHEDIR.TAG
 ├── .venv
 │   ├── bin
 │   │   ├── Activate.ps1
@@ -50,6 +65,8 @@ Project tree generated on: Sun Dec 28 01:42:47 IST 2025
 ├── Makefile
 ├── README.md
 ├── REPORT.md
+├── api
+│   └── main.py
 ├── artifacts
 │   ├── metrics
 │   │   ├── data_describe.csv
@@ -82,25 +99,121 @@ Project tree generated on: Sun Dec 28 01:42:47 IST 2025
 │       └── service.yaml
 ├── docs
 │   └── project_tree.txt
+├── mlruns
+│   ├── 0
+│   │   └── meta.yaml
+│   └── 248048486322128391
+│       ├── 0405337ab2844e66bf2964b82d463ae2
+│       │   └── meta.yaml
+│       ├── 12cc7c7cae474c9398f7dc923e7f7a05
+│       │   └── meta.yaml
+│       ├── 1369d77745444238a7d3edea025aa6f1
+│       │   └── meta.yaml
+│       ├── 1a8c0c2decbe4954acd569c5fa043b64
+│       │   └── meta.yaml
+│       ├── 1ccdc6bce3e040558f5a593a77896a78
+│       │   └── meta.yaml
+│       ├── 1f74f3b0967845deafb3788c1c98cbb9
+│       │   └── meta.yaml
+│       ├── 229780477a5c497f9abab5895d4bbda4
+│       │   └── meta.yaml
+│       ├── 23455bd245a14f7bbef3a63eb0a1e427
+│       │   └── meta.yaml
+│       ├── 2baea41c97b84e68af796de40a7cdf3b
+│       │   └── meta.yaml
+│       ├── 2dfbc0d23a114217bac7256ef7039740
+│       │   └── meta.yaml
+│       ├── 2ffc605dfb47427fb3c535e67bfe9efb
+│       │   └── meta.yaml
+│       ├── 327ed6465d1a4b34a4082becb3201ee5
+│       │   └── meta.yaml
+│       ├── 3826f459df3d4d1dab525f1f47f2c734
+│       │   └── meta.yaml
+│       ├── 3f0b3b6ade9f4eb685a27ab2561ff18d
+│       │   └── meta.yaml
+│       ├── 4b1262026c6c4211b889cc3ae6198815
+│       │   └── meta.yaml
+│       ├── 4bf28157e09041ba85b5c0c121884d31
+│       │   └── meta.yaml
+│       ├── 58bfb570a0d24306a7a877fb928b0841
+│       │   └── meta.yaml
+│       ├── 5b0ddb18fe704d72b84817a45650ad74
+│       │   └── meta.yaml
+│       ├── 627de996ab2343f7bad82d814254f5a3
+│       │   └── meta.yaml
+│       ├── 71e9c994ff864e64a71ab8f59b8f56d5
+│       │   └── meta.yaml
+│       ├── 763f24e2a6da43d7a2dee1f9fcc6485b
+│       │   └── meta.yaml
+│       ├── 870855e7db8342869e3f7c0628947617
+│       │   └── meta.yaml
+│       ├── 8ba7a41ed15149fa8c9123140db08ef5
+│       │   └── meta.yaml
+│       ├── 8dee229f2055458d8f9b445df4a65d8e
+│       │   └── meta.yaml
+│       ├── 8f85de0f657e468481993d5cc358e20f
+│       │   └── meta.yaml
+│       ├── 9430afb4265d4482a500adb2a08407bb
+│       │   └── meta.yaml
+│       ├── 993b4500a1584e30b12cf115421afee8
+│       │   └── meta.yaml
+│       ├── a819c13cd42f4afabaefd6ea0b371cf7
+│       │   └── meta.yaml
+│       ├── b222b807d12948cfa700883901f89c03
+│       │   └── meta.yaml
+│       ├── b28b02c634e3409ab51d3403fab584f0
+│       │   └── meta.yaml
+│       ├── b8da6e285c6f4610bbea68a306087fbf
+│       │   └── meta.yaml
+│       ├── bd40d119f62a4663a284d8b90e3edeaa
+│       │   └── meta.yaml
+│       ├── be5f948055864bc5afe77251692e7b31
+│       │   └── meta.yaml
+│       ├── c4b5ce2bc54045e6ac8551a592fcbac5
+│       │   └── meta.yaml
+│       ├── c9256a0010ab4efea499021633c234cd
+│       │   └── meta.yaml
+│       ├── cbfa7c39dcb74b0d91d2060568266dcb
+│       │   └── meta.yaml
+│       ├── ea434e114a984c549356da0af4308653
+│       │   └── meta.yaml
+│       ├── eaf9357ec13240b6a61c8a084d734384
+│       │   └── meta.yaml
+│       ├── f3a0999b30a248e184f275c06beedccb
+│       │   └── meta.yaml
+│       ├── f7787d99e9d14d8f9ec6466602c2c1e3
+│       │   └── meta.yaml
+│       ├── f7bfa40c782146858ffb4c6fda60b53e
+│       │   └── meta.yaml
+│       ├── ff5f398812d8443bbe4dd73712d3dc9c
+│       │   └── meta.yaml
+│       └── meta.yaml
 ├── models
+│   ├── best_model.joblib
 │   ├── logistic_regression_model.joblib
 │   ├── random_forest_model.joblib
 │   ├── random_forest_tuned_model.joblib
 │   └── scaler.joblib
+├── pytest.ini
 ├── requirements.txt
 ├── scripts
 │   └── run_pipeline.py
-└── src
-    └── heartml
-        ├── __init__.py
-        ├── config.py
-        ├── data_ingest.py
-        ├── data_validate.py
-        ├── eda.py
-        ├── evaluate.py
-        ├── predict.py
-        ├── preprocess.py
-        ├── train.py
-        └── utils.py
+├── src
+│   └── heartml
+│       ├── __init__.py
+│       ├── config.py
+│       ├── data_ingest.py
+│       ├── data_validate.py
+│       ├── eda.py
+│       ├── evaluate.py
+│       ├── predict.py
+│       ├── preprocess.py
+│       ├── train.py
+│       └── utils.py
+└── tests
+    ├── conftest.py
+    ├── test_data_ingest.py
+    ├── test_preprocess.py
+    └── test_training_smoke.py
 
-20 directories, 83 files
+72 directories, 144 files
