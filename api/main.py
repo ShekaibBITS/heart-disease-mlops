@@ -20,6 +20,11 @@ import joblib  # Artifact loading
 import pandas as pd  # Build inference DataFrame
 from fastapi import FastAPI, HTTPException  # API framework
 from pydantic import BaseModel, Field  # Validation
+import logging
+from fastapi import Request
+from prometheus_client import Counter, generate_latest
+from fastapi.responses import Response
+
 
 from src.heartml.config import (
     PROJECT_ROOT,
@@ -30,7 +35,21 @@ from src.heartml.config import (
 )  # Shared schema
 
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
+
+logger = logging.getLogger("api-logger")
+
+REQUEST_COUNT = Counter(
+    "http_requests_total",
+    "Total number of HTTP requests"
+)
+
+
 SCALER_PATH = PROJECT_ROOT / "models" / "scaler.joblib"  # Saved scaler
+
 
 
 class PredictRequest(BaseModel):
@@ -50,6 +69,21 @@ app = FastAPI(title="Heart Disease Prediction API", version="1.0.0")  # App inst
 model = None  # Loaded model
 scaler = None  # Loaded scaler
 
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    logger.info(f"Request started: {request.method} {request.url.path}")
+    response = await call_next(request)
+    logger.info(f"Request completed: status={response.status_code}")
+    return response
+
+@app.middleware("http")
+async def count_requests(request: Request, call_next):
+    REQUEST_COUNT.inc()
+    return await call_next(request)
+
+@app.get("/metrics")
+def metrics():
+    return Response(generate_latest(), media_type="text/plain")
 
 @app.on_event("startup")
 def _startup() -> None:
