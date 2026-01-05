@@ -41,6 +41,7 @@ jobs:
 
     runs-on: ubuntu-latest
 
+
     permissions:
       contents: read
       packages: write
@@ -80,6 +81,7 @@ jobs:
       - name: Checkout exact ref (immutable)
         uses: actions/checkout@v4
         with:
+          ref: ${{ steps.vars.outputs.REF }}
           ref: ${{ steps.vars.outputs.REF }}
 
       # -------------------------------
