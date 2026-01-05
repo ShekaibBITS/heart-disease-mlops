@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: heart-api-config
+  namespace: heart-mlops
+data:
+  # Keep API alive even if model is not loaded yet (your current behavior)
+  MODEL_LOAD_RETRY: "true"
+  MODEL_LOAD_RETRY_SECONDS: "20"
+
+  # If serving loads model from MLflow at runtime (optional):
+  # MLFLOW_TRACKING_URI: "http://mlflow:5000"
+  # MLFLOW_RUN_ID: "PUT_RUN_ID"
+  # MLFLOW_MODEL_ARTIFACT_PATH: "model"

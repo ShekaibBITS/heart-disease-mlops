@@ -1,12 +1,14 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: heart-disease-service
+  name: heart-api-svc
+  namespace: heart-mlops
 spec:
-  type: LoadBalancer
+  type: NodePort
   selector:
-    app: heart-disease-api
+    app: heart-api
   ports:
-    - protocol: TCP
+    - name: http
       port: 80
       targetPort: 8000
+      nodePort: 30080

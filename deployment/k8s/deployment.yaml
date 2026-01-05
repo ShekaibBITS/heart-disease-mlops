@@ -1,20 +1,47 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: heart-disease-api
+  name: heart-api
+  namespace: heart-mlops
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: heart-disease-api
+      app: heart-api
   template:
     metadata:
       labels:
-        app: heart-disease-api
+        app: heart-api
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: "/metrics"
+        prometheus.io/port: "8000"
     spec:
       containers:
-        - name: heart-disease-api
-          image: heart-disease-api:latest
-          imagePullPolicy: Never
+        - name: heart-api
+          image: heart-api:latest
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: heart-api-config
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 8
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
