@@ -1,117 +1,150 @@
 """heartml.config
 
-Notes (what this module does)
-- Centralizes constants used across ingestion, preprocessing, training, and evaluation.
-- Keeps URLs, column names, feature groups, and key hyperparameters in one place for reproducibility.
+Central configuration constants used across ingestion, preprocessing, training,
+evaluation, and serving.
+
+Key updates:
+- Default MLflow tracking is a RUNNING SERVER (http://localhost:5000).
+- Always allow env var override (Docker: http://mlflow:5000, K8s: http://mlflow:5000).
+- Keep a file-based URI available as a fallback option (useful for CI/offline).
 """
 
-# Import Path for OS-independent file path handling
-from pathlib import Path  # Standard library utility for paths
+from __future__ import annotations
 
-# Define the project root as the directory that contains this file's grandparent (repo/src/heartml)
-PROJECT_ROOT = Path(__file__).resolve().parents[2]  # Resolve absolute path for reliability
+import os
+from pathlib import Path
 
-# -----------------------------
+
+# -----------------------------------------------------------------------------
+# Helpers
+# -----------------------------------------------------------------------------
+def _env_bool(name: str, default: str = "false") -> bool:
+    return (os.getenv(name, default) or default).strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _env_str(name: str, default: str) -> str:
+    return (os.getenv(name, default) or default).strip()
+
+
+# -----------------------------------------------------------------------------
+# Project root
+# -----------------------------------------------------------------------------
+# src/heartml/config.py -> parents[0]=heartml, [1]=src, [2]=repo_root
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
+# -----------------------------------------------------------------------------
 # Dataset configuration
-# -----------------------------
-
-# Define the UCI URL used in the notebook (processed Cleveland dataset)
+# -----------------------------------------------------------------------------
 DATASET_URL = (
     "https://archive.ics.uci.edu/ml/machine-learning-databases/heart-disease/processed.cleveland.data"
-)  # Public dataset endpoint
+)
 
-# Define the feature/column names
 FEATURE_NAMES = [
-    "age", "sex", "cp", "trestbps", "chol", "fbs",
-    "restecg", "thalach", "exang", "oldpeak",
-    "slope", "ca", "thal", "target"
-]  # 13 features + 1 target
+    "age",
+    "sex",
+    "cp",
+    "trestbps",
+    "chol",
+    "fbs",
+    "restecg",
+    "thalach",
+    "exang",
+    "oldpeak",
+    "slope",
+    "ca",
+    "thal",
+    "target",
+]
 
-# Define which features are treated as numerical (scaled)
-NUMERICAL_FEATURES = ["age", "trestbps", "chol", "thalach", "oldpeak"] 
-
-# Define which features are treated as categorical/binary (left unscaled)
+NUMERICAL_FEATURES = ["age", "trestbps", "chol", "thalach", "oldpeak"]
 CATEGORICAL_FEATURES = ["sex", "cp", "fbs", "restecg", "exang", "slope", "ca", "thal"]
+TARGET_COL = "target"
 
-# Define the column that represents the label
-TARGET_COL = "target"  # Output label column name
 
-# -----------------------------
+# -----------------------------------------------------------------------------
 # Train/test split configuration
-# -----------------------------
+# -----------------------------------------------------------------------------
+TEST_SIZE = 0.20
+RANDOM_STATE = 42
 
-# Define test split size
-TEST_SIZE = 0.20  # Fraction of samples used for testing
 
-# Define random seed 
-RANDOM_STATE = 42  # Seed for reproducibility
-
-# -----------------------------
+# -----------------------------------------------------------------------------
 # Model training configuration
-# -----------------------------
+# -----------------------------------------------------------------------------
+LR_MAX_ITER = 1000
+LR_SOLVER = "lbfgs"
 
-# Logistic Regression defaults
-LR_MAX_ITER = 1000  # Ensure convergence
-LR_SOLVER = "lbfgs"  # Standard solver for binary classification
+RF_N_ESTIMATORS = 100
+RF_MAX_DEPTH = 10
+RF_MIN_SAMPLES_SPLIT = 5
+RF_MIN_SAMPLES_LEAF = 2
+RF_N_JOBS = -1
 
-# Random Forest defaults
-RF_N_ESTIMATORS = 100  # Number of trees
-RF_MAX_DEPTH = 10  # Max depth per tree
-RF_MIN_SAMPLES_SPLIT = 5  # Minimum samples required to split an internal node
-RF_MIN_SAMPLES_LEAF = 2  # Minimum samples required to be at a leaf node
-RF_N_JOBS = -1  # Use all CPU cores
+CV_FOLDS = 5
 
-# Cross-validation configuration
-CV_FOLDS = 5  # Number of folds for StratifiedKFold CV
-
-# Grid-search hyperparameter grid  (kept small for speed)
 RF_PARAM_GRID = {
-    "n_estimators": [100, 200],  # Candidate number of trees
-    "max_depth": [8, 10, 12],  # Candidate maximum depths
-    "min_samples_split": [2, 5, 10],  # Candidate split thresholds
-    "min_samples_leaf": [1, 2, 4],  # Candidate leaf thresholds
-}  # Parameter grid for GridSearchCV
+    "n_estimators": [100, 200],
+    "max_depth": [8, 10, 12],
+    "min_samples_split": [2, 5, 10],
+    "min_samples_leaf": [1, 2, 4],
+}
 
-# -----------------------------
+
+# -----------------------------------------------------------------------------
 # Paths for artifacts and outputs
-# -----------------------------
+# -----------------------------------------------------------------------------
+RAW_DATA_PATH = PROJECT_ROOT / "data" / "raw" / "processed.cleveland.csv"
+PROCESSED_DATA_PATH = PROJECT_ROOT / "data" / "processed" / "heart_disease_clean.csv"
 
-# Define where to store raw downloaded data
-RAW_DATA_PATH = PROJECT_ROOT / "data" / "raw" / "processed.cleveland.csv"  # Stored as CSV
+MODEL_DIR = PROJECT_ROOT / "models"
+SCALER_PATH = MODEL_DIR / "scaler.joblib"
+LR_MODEL_PATH = MODEL_DIR / "logistic_regression_model.joblib"
+RF_MODEL_PATH = MODEL_DIR / "random_forest_model.joblib"
+RF_TUNED_MODEL_PATH = MODEL_DIR / "random_forest_tuned_model.joblib"
+BEST_MODEL_PATH = MODEL_DIR / "best_model.joblib"
 
-# Define where to store cleaned/processed data
-PROCESSED_DATA_PATH = PROJECT_ROOT / "data" / "processed" / "heart_disease_clean.csv"  # Cleaned dataset
+PLOTS_DIR = PROJECT_ROOT / "artifacts" / "plots"
+METRICS_DIR = PROJECT_ROOT / "artifacts" / "metrics"
+MODEL_COMPARISON_PATH = METRICS_DIR / "model_comparison.csv"
+METRICS_JSON_PATH = METRICS_DIR / "metrics.json"
 
-# Define where to store models
-MODEL_DIR = PROJECT_ROOT / "models"  # Folder containing serialized models
 
-# Define filenames for serialized artifacts
-SCALER_PATH = MODEL_DIR / "scaler.joblib"  # StandardScaler artifact
-LR_MODEL_PATH = MODEL_DIR / "logistic_regression_model.joblib"  # Baseline model artifact
-RF_MODEL_PATH = MODEL_DIR / "random_forest_model.joblib"  # Baseline RF artifact
-RF_TUNED_MODEL_PATH = MODEL_DIR / "random_forest_tuned_model.joblib"  # Tuned RF artifact
+# -----------------------------------------------------------------------------
+# MLflow configuration (server-first, env-overridable)
+# -----------------------------------------------------------------------------
+MLFLOW_EXPERIMENT_NAME = _env_str("MLFLOW_EXPERIMENT_NAME", "heart-disease-uci")
 
-# Define where to store plots
-PLOTS_DIR = PROJECT_ROOT / "artifacts" / "plots"  # Folder for images
+# File-based tracking (useful fallback for CI / offline mode)
+MLFLOW_TRACKING_DIR = PROJECT_ROOT / "mlruns"
+MLFLOW_FILE_TRACKING_URI = f"file:{MLFLOW_TRACKING_DIR.resolve()}"
 
-# Define where to store metrics and tables
-METRICS_DIR = PROJECT_ROOT / "artifacts" / "metrics"  # Folder for metrics
-MODEL_COMPARISON_PATH = METRICS_DIR / "model_comparison.csv"  # Model comparison table
-METRICS_JSON_PATH = METRICS_DIR / "metrics.json"  # Full metrics dump as JSON
+# Default to a local running MLflow server.
+# Override via env:
+#   - Local:   MLFLOW_TRACKING_URI=http://localhost:5000
+#   - Docker:  MLFLOW_TRACKING_URI=http://mlflow:5000
+#   - K8s:     MLFLOW_TRACKING_URI=http://mlflow:5000
+#
+# Optional offline/CI switch:
+#   - MLFLOW_USE_FILE_STORE=true  -> uses file:... even if MLFLOW_TRACKING_URI not set
+MLFLOW_USE_FILE_STORE = _env_bool("MLFLOW_USE_FILE_STORE", "false")
 
-# Canonical best-model path for serving (chosen automatically after training)
-BEST_MODEL_PATH = MODEL_DIR / "best_model.joblib"  # API loads this model
+_default_tracking = "http://localhost:5000"
+MLFLOW_TRACKING_URI = _env_str("MLFLOW_TRACKING_URI", _default_tracking)
 
-# =========================
-# MLflow configuration for local experiment tracking.
-# The tracking URI is set to a local file store to keep the workflow simple and reproducible.
-# =========================
+# If user wants explicit file store mode (CI/offline), override tracking URI.
+if MLFLOW_USE_FILE_STORE:
+    MLFLOW_TRACKING_URI = MLFLOW_FILE_TRACKING_URI
 
-# MLflow experiment name (appears in the MLflow UI)
-MLFLOW_EXPERIMENT_NAME = "heart-disease-uci"  # Experiment label
+# Standardize model artifact path (API expects runs:/<RUN_ID>/<artifact_path>)
+MLFLOW_MODEL_ARTIFACT_PATH = _env_str("MLFLOW_MODEL_ARTIFACT_PATH", "model")
 
-# Local tracking store directory (file-based)
-MLFLOW_TRACKING_DIR = Path("mlruns")  # Folder created by MLflow runs
+# MLflow Registry (optional / non-breaking)
+MLFLOW_REGISTER_MODEL = _env_bool("MLFLOW_REGISTER_MODEL", "false")
+MLFLOW_MODEL_NAME = _env_str("MLFLOW_MODEL_NAME", "heart_disease_classifier")
 
-# Tracking URI (explicit file path ensures consistent behavior across shells/IDEs)
-MLFLOW_TRACKING_URI = f"file:{MLFLOW_TRACKING_DIR.resolve()}"  # Local file store URI
+# Allow disabling stage transition by setting empty string:
+#   MLFLOW_MODEL_STAGE=""  -> no transition call will be made
+MLFLOW_MODEL_STAGE = _env_str("MLFLOW_MODEL_STAGE", "Staging")
+if MLFLOW_MODEL_STAGE.strip() == "":
+    MLFLOW_MODEL_STAGE = ""

@@ -1,3 +1,4 @@
+# src/heartml/data_ingest.py
 """heartml.data_ingest
 
 Notes (what this script does)
@@ -6,79 +7,140 @@ Notes (what this script does)
 - Provides a load function used by training scripts.
 
 Run (from project root):
-    python src/heartml/data_ingest.py
+    python -m src.heartml.data_ingest
 """
 
-# Import StringIO to treat downloaded text as a file-like object for pandas
-from io import StringIO  # Allows pd.read_csv on in-memory strings
+from __future__ import annotations
 
-# Import requests to download the dataset over HTTP
-import requests  # HTTP client used in the notebook
+from io import StringIO
+from typing import Any, Dict
 
-# Import pandas for CSV parsing into a DataFrame
-import pandas as pd  # Data manipulation library
+import pandas as pd
+import requests
 
-# Import project configuration (URL, feature names, output paths)
-from .config import DATASET_URL, FEATURE_NAMES, RAW_DATA_PATH  # Centralized constants
+from .config import DATASET_URL, FEATURE_NAMES, RAW_DATA_PATH
+from .utils import ensure_dir, sha256_file
 
-# Import helper to ensure folders exist
-from .utils import ensure_dir  # Directory creation helper
+
+def _read_csv_text(text: str) -> pd.DataFrame:
+    """Parse UCI text into DataFrame with canonical schema."""
+    return pd.read_csv(
+        StringIO(text),
+        header=None,
+        names=FEATURE_NAMES,
+        na_values="?",
+    )
+
+
+def _read_cached_csv(path) -> pd.DataFrame:
+    """Read cached raw CSV from disk with consistent NA handling."""
+    return pd.read_csv(path, na_values="?")
 
 
 def download_dataset() -> pd.DataFrame:
     """Download the dataset from UCI and return as a pandas DataFrame."""
-
-    # Make an HTTP GET request to download the dataset (timeout avoids hanging indefinitely)
-    response = requests.get(DATASET_URL, timeout=30)  # Fetch dataset text
-
-    # Raise an exception for HTTP errors (e.g., 404/500) so failures are visible early
-    response.raise_for_status()  # Fail fast on network/HTTP issues
-
-    # Parse the CSV-like content using the same column names as the notebook
-    df = pd.read_csv(  # Create DataFrame
-        StringIO(response.text),  # Provide the content as a file-like buffer
-        header=None,  # The file has no header row
-        names=FEATURE_NAMES,  # Assign documented column names
-        na_values="?",  # Treat '?' as missing values
-    )
-
-    # Return the parsed DataFrame to the caller
-    return df  # DataFrame with 14 columns
+    response = requests.get(DATASET_URL, timeout=30)
+    response.raise_for_status()
+    return _read_csv_text(response.text)
 
 
 def save_raw_dataset(df: pd.DataFrame) -> None:
     """Save the raw dataset to disk for reproducibility."""
-
-    # Ensure the parent folder (data/raw) exists before writing
-    ensure_dir(RAW_DATA_PATH.parent)  # Create directory tree if needed
-
-    # Save the DataFrame as CSV (index=False prevents adding an extra column)
-    df.to_csv(RAW_DATA_PATH, index=False)  # Persist raw data for later runs
+    ensure_dir(RAW_DATA_PATH.parent)
+    df.to_csv(RAW_DATA_PATH, index=False)
 
 
 def load_or_download() -> pd.DataFrame:
     """Load raw dataset from disk if present; otherwise download and save it."""
+    if RAW_DATA_PATH.exists():
+        return _read_cached_csv(RAW_DATA_PATH)
 
-    # If the raw dataset already exists locally, load it from disk
-    if RAW_DATA_PATH.exists():  # Check local cache
-        return pd.read_csv(RAW_DATA_PATH)  # Return cached raw dataset
+    df = download_dataset()
+    save_raw_dataset(df)
+    return df
 
-    # Otherwise, download from UCI
-    df = download_dataset()  # Fetch from the internet
 
-    # Save the raw dataset to disk for reproducibility
-    save_raw_dataset(df)  # Cache locally
+def _dataset_profile(df: pd.DataFrame) -> Dict[str, Any]:
+    """
+    Small dataset profile for tracking.
+    - schema (dtype)
+    - missingness summary
+    - basic shape
+    """
+    schema = {c: str(df[c].dtype) for c in df.columns}
+    missing_pct = (df.isna().mean() * 100.0).round(3).to_dict()
 
-    # Return the downloaded DataFrame
-    return df  # DataFrame ready for preprocessing
+    return {
+        "rows": int(df.shape[0]),
+        "cols": int(df.shape[1]),
+        "columns": list(df.columns),
+        "schema": schema,
+        "missing_pct": missing_pct,
+    }
+
+
+def _try_log_to_mlflow(df: pd.DataFrame) -> None:
+    """
+    Optional: log dataset + feature metadata to MLflow.
+
+    MinIO-safe approach:
+      - Uses tags/params + artifacts (CSV snapshot + JSON metadata)
+      - Does NOT use mlflow.log_input / mlflow.data.* dataset APIs
+
+    Non-breaking: if MLflow not configured or errors occur, it silently skips.
+    """
+    import os
+
+    tracking_uri = (os.getenv("MLFLOW_TRACKING_URI") or "").strip()
+    if not tracking_uri:
+        return
+
+    try:
+        import mlflow
+
+        mlflow.set_tracking_uri(tracking_uri)
+
+        # Deterministic dataset version
+        dataset_sha = sha256_file(RAW_DATA_PATH) if RAW_DATA_PATH.exists() else "missing_raw_data_file"
+        profile = _dataset_profile(df)
+
+        def _log_common() -> None:
+            mlflow.log_param("dataset_url", DATASET_URL)
+            mlflow.log_param("dataset_rows", profile["rows"])
+            mlflow.log_param("dataset_cols", profile["cols"])
+
+            mlflow.set_tag("dataset_path", str(RAW_DATA_PATH))
+            mlflow.set_tag("dataset_sha256", dataset_sha)
+            mlflow.set_tag("feature_names_csv", ",".join(profile["columns"]))
+
+            # JSON metadata artifacts (easy to review)
+            mlflow.log_dict(profile["schema"], "data/schema.json")
+            mlflow.log_dict(profile["missing_pct"], "data/missing_pct.json")
+            mlflow.log_dict(profile, "data/dataset_profile.json")
+
+            # Raw snapshot artifact (stored in MinIO)
+            if RAW_DATA_PATH.exists():
+                mlflow.log_artifact(str(RAW_DATA_PATH), artifact_path="data/raw")
+
+        active = mlflow.active_run()
+        if active is None:
+            mlflow.set_experiment("heartml-data-ingest")
+            with mlflow.start_run(run_name="data_ingest"):
+                _log_common()
+        else:
+            _log_common()
+
+    except Exception:
+        return
 
 
 if __name__ == "__main__":
-    # Download (or load) the dataset
-    df_raw = load_or_download()  # Acquire dataset
+    df_raw = load_or_download()
 
-    # Print basic confirmation details (useful for logs and debugging)
-    print("Dataset ready.")  # High-level confirmation
-    print(f"Path: {RAW_DATA_PATH}")  # Where it is stored
-    print(f"Shape: {df_raw.shape}")  # Expected ~ (303, 14)
-    print(df_raw.head())  # Preview first 5 rows
+    # Optional MLflow + MinIO artifact logging
+    _try_log_to_mlflow(df_raw)
+
+    print("Dataset ready.")
+    print(f"Path: {RAW_DATA_PATH}")
+    print(f"Shape: {df_raw.shape}")
+    print(df_raw.head())

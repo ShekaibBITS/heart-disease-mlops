@@ -12,209 +12,191 @@ Run (from project root):
     python src/heartml/eda.py
 """
 
-# Import numpy for numeric utilities
-import numpy as np  # Numerical computing
+from __future__ import annotations
 
-# Import pandas for DataFrame operations
-import pandas as pd  # Data manipulation
+from pathlib import Path
+from typing import Optional
 
-# Import matplotlib for plotting
-import matplotlib.pyplot as plt  # Plotting library
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
 
-# Import seaborn for heatmaps and style
-import seaborn as sns  # Statistical plots
-
-# Import config for feature groupings and paths
-from .config import NUMERICAL_FEATURES, TARGET_COL, PLOTS_DIR  # Central constants
-
-# Import helper to ensure plot directory exists
-from .utils import ensure_dir  # Directory creation
-
-# Import preprocessing function so EDA operates on cleaned data
-from .preprocess import clean_dataset  # Cleaning consistent with training pipeline
-
-# Import loader to acquire raw data
-from .data_ingest import load_or_download  # Download/cache raw dataset
+from .config import NUMERICAL_FEATURES, TARGET_COL, PLOTS_DIR
+from .utils import ensure_dir
+from .preprocess import clean_dataset
+from .data_ingest import load_or_download
 
 
 def plot_class_distribution(df: pd.DataFrame) -> None:
     """Plot and save class distribution (bar + pie), mirroring the notebook."""
+    ensure_dir(PLOTS_DIR)
 
-    # Ensure output directory exists
-    ensure_dir(PLOTS_DIR)  # Create artifacts/plots if required
+    if TARGET_COL not in df.columns:
+        raise ValueError(f"TARGET_COL '{TARGET_COL}' not found in dataframe.")
 
-    # Count class occurrences
-    target_counts = df[TARGET_COL].value_counts().sort_index()  # Ensure order [0,1]
+    target_counts = df[TARGET_COL].value_counts().sort_index()
 
-    # Create a side-by-side subplot layout
-    fig, axes = plt.subplots(1, 2, figsize=(12, 4))  # Two plots in one row
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4))
 
-    # ----- Bar plot -----
-    axes[0].bar(["No Disease", "Disease"], target_counts.values, edgecolor="black")  # Bar chart
-    axes[0].set_title("Class Distribution")  # Title
-    axes[0].set_ylabel("Count")  # Y-axis label
+    # Bar plot
+    labels = [str(i) for i in target_counts.index.tolist()]
+    axes[0].bar(labels, target_counts.values, edgecolor="black")
+    axes[0].set_title("Class Distribution")
+    axes[0].set_ylabel("Count")
 
-    # Annotate bars with counts
-    for i, v in enumerate(target_counts.values):  # Iterate bars
-        axes[0].text(i, v + 3, str(int(v)), ha="center")  # Add text labels
+    for i, v in enumerate(target_counts.values):
+        axes[0].text(i, v + max(1, int(0.02 * v)), str(int(v)), ha="center")
 
-    # ----- Pie chart -----
+    # Pie chart
     axes[1].pie(
-        target_counts.values,  # Values for slices
-        labels=["No Disease", "Disease"],  # Slice labels
-        autopct="%1.1f%%",  # Percentage labels
-        startangle=90,  # Rotate for readability
+        target_counts.values,
+        labels=labels,
+        autopct="%1.1f%%",
+        startangle=90,
     )
-    axes[1].set_title("Class Balance")  # Title
+    axes[1].set_title("Class Balance")
 
-    # Improve layout
-    fig.tight_layout()  # Avoid overlap
+    fig.tight_layout()
+    fig.savefig(PLOTS_DIR / "class_distribution.png", dpi=200)
+    plt.close(fig)
 
-    # Save to disk
-    fig.savefig(PLOTS_DIR / "class_distribution.png", dpi=200)  # Persist artifact
-
-    # Close figure
-    plt.close(fig)  # Cleanup
 
 def plot_numerical_distributions(df: pd.DataFrame) -> None:
     """Plot and save numerical feature distributions with mean/median overlays (notebook-style)."""
+    ensure_dir(PLOTS_DIR)
 
-    # Ensure output directory exists
-    ensure_dir(PLOTS_DIR)  # Create artifacts/plots if required
+    numeric_cols = [c for c in NUMERICAL_FEATURES if c in df.columns]
+    if not numeric_cols:
+        raise ValueError("No numerical features found in dataframe for plotting.")
 
-    # Create a subplot grid (2x3 supports up to 6 numerical features)
-    fig, axes = plt.subplots(2, 3, figsize=(18, 10))  # Large figure for report-quality plots
-    fig.suptitle("Distribution of Numerical Features", fontsize=16, fontweight="bold")  # Global title
-    axes = axes.ravel()  # Flatten axes for simple iteration
+    # Create a 2x3 grid (up to 6). If more features, we still plot first 6 to keep layout stable.
+    cols_to_plot = numeric_cols[:6]
 
-    # Plot each numerical feature
-    for idx, col in enumerate(NUMERICAL_FEATURES):  # Loop over numeric columns
-        axes[idx].hist(df[col], bins=30, edgecolor="black", alpha=0.7)  # Histogram
-        axes[idx].set_title(f"{col.upper()} Distribution", fontweight="bold")  # Title
-        axes[idx].set_xlabel("Value")  # X-axis label
-        axes[idx].set_ylabel("Frequency")  # Y-axis label
+    fig, axes = plt.subplots(2, 3, figsize=(18, 10))
+    fig.suptitle("Distribution of Numerical Features", fontsize=16, fontweight="bold")
+    axes = axes.ravel()
 
-        # Mean line
-        axes[idx].axvline(
-            df[col].mean(),
-            color="red",
-            linestyle="--",
-            label="Mean",
-        )
+    for idx, col in enumerate(cols_to_plot):
+        series = df[col].dropna()
+        axes[idx].hist(series, bins=30, edgecolor="black", alpha=0.7)
+        axes[idx].set_title(f"{col.upper()} Distribution", fontweight="bold")
+        axes[idx].set_xlabel("Value")
+        axes[idx].set_ylabel("Frequency")
 
-        # Median line
-        axes[idx].axvline(
-            df[col].median(),
-            color="green",
-            linestyle="--",
-            label="Median",
-        )
+        # Mean/Median
+        axes[idx].axvline(series.mean(), linestyle="--", label="Mean")
+        axes[idx].axvline(series.median(), linestyle="--", label="Median")
 
-        axes[idx].legend()  # Show mean/median legend
-        axes[idx].grid(True, alpha=0.3)  # Light grid
+        axes[idx].legend()
+        axes[idx].grid(True, alpha=0.3)
 
-    # Remove unused subplots
-    if len(NUMERICAL_FEATURES) < len(axes):
-        for i in range(len(NUMERICAL_FEATURES), len(axes)):
-            fig.delaxes(axes[i])
+    # Remove unused axes
+    for j in range(len(cols_to_plot), len(axes)):
+        fig.delaxes(axes[j])
 
-    # Adjust layout
     plt.tight_layout()
-
-    # SAVE WITH ORIGINAL FILENAME (unchanged)
     fig.savefig(PLOTS_DIR / "numerical_distributions.png", dpi=200)
-
-    # Close figure
     plt.close(fig)
 
 
 def plot_correlation_heatmap(df: pd.DataFrame) -> None:
     """Plot and save annotated feature correlation heatmap (notebook-style)."""
-
-    # Ensure output directory exists
     ensure_dir(PLOTS_DIR)
 
-    # Compute correlation matrix
     corr = df.corr(numeric_only=True)
+    if corr.empty:
+        raise ValueError("Correlation matrix is empty (no numeric columns).")
 
-    # Upper triangle mask
     mask = np.triu(np.ones_like(corr, dtype=bool))
 
-    # Create figure
     plt.figure(figsize=(14, 10))
-
-    # Annotated heatmap (numbers inside cells)
     sns.heatmap(
         corr,
         mask=mask,
-        annot=True,          # SHOW numeric values
-        fmt=".2f",           # Two-decimal formatting
+        annot=True,
+        fmt=".2f",
         cmap="coolwarm",
         center=0,
         square=True,
         linewidths=1,
     )
-
-    # Title
     plt.title("Feature Correlation Heatmap", fontsize=16, fontweight="bold", pad=20)
-
-    # Layout
     plt.tight_layout()
-
-    # SAVE WITH ORIGINAL FILENAME (unchanged)
     plt.savefig(PLOTS_DIR / "correlation_heatmap.png", dpi=200)
-
-    # Close figure
     plt.close()
 
-    # Console summary (as in notebook)
     if TARGET_COL in corr.columns:
         print("Top correlations with target:")
-        print(corr[TARGET_COL].sort_values(ascending=False)[1:6])
+        print(corr[TARGET_COL].sort_values(ascending=False).iloc[1:6])
 
-def save_tabular_eda(df: pd.DataFrame, output_dir) -> None:
+
+def save_tabular_eda(df: pd.DataFrame, output_dir: Path) -> None:
     """
-    Notes:
     Persist tabular EDA outputs (head, describe, missing values)
     so they are reproducible and available for reports and MLflow.
     """
-
-    # Ensure directory exists
     ensure_dir(output_dir)
 
-    # Save first 5 rows
     df.head().to_csv(output_dir / "data_head.csv", index=False)
 
-    # Save statistical summary
-    df.describe().round(2).to_csv(output_dir / "data_describe.csv")
-    df.describe().round(2).to_markdown(output_dir / "data_describe.md")
+    desc = df.describe().round(2)
+    desc.to_csv(output_dir / "data_describe.csv")
+    desc.to_markdown(output_dir / "data_describe.md")
 
-
-    # Save missing value summary
-    assert df.isna().sum().sum() == 0, "df_clean contains unexpected missing values"
     missing_summary = df.isna().sum().reset_index()
     missing_summary.columns = ["feature", "missing_count"]
     missing_summary.to_csv(output_dir / "missing_values.csv", index=False)
 
+
+def _try_log_eda_to_mlflow(plots_dir: Path, tabular_dir: Path) -> None:
+    """
+    Optional: log EDA artifacts to MLflow (-> MinIO).
+    Non-breaking: if MLflow not configured, it skips.
+    """
+    import os
+
+    tracking_uri = os.getenv("MLFLOW_TRACKING_URI")
+    if not tracking_uri:
+        return
+
+    try:
+        import mlflow
+
+        mlflow.set_tracking_uri(tracking_uri)
+
+        active = mlflow.active_run()
+        if active is None:
+            mlflow.set_experiment("heartml-eda")
+            with mlflow.start_run():
+                if plots_dir.exists():
+                    mlflow.log_artifacts(str(plots_dir), artifact_path="eda/plots")
+                if tabular_dir.exists():
+                    mlflow.log_artifacts(str(tabular_dir), artifact_path="eda/tabular")
+        else:
+            if plots_dir.exists():
+                mlflow.log_artifacts(str(plots_dir), artifact_path="eda/plots")
+            if tabular_dir.exists():
+                mlflow.log_artifacts(str(tabular_dir), artifact_path="eda/tabular")
+    except Exception:
+        return
+
+
 if __name__ == "__main__":
-    # Apply seaborn styling similar to notebook (optional)
-    sns.set_style("darkgrid")  # Styling
+    sns.set_style("darkgrid")
 
-    # Load raw dataset
-    df_raw = load_or_download()  # Acquire data
+    df_raw = load_or_download()
+    df_clean = clean_dataset(df_raw)
 
-    # Clean dataset (same cleaning as training)
-    df_clean = clean_dataset(df_raw)  # Clean + binarize target
+    plot_class_distribution(df_clean)
+    plot_numerical_distributions(df_clean)
+    plot_correlation_heatmap(df_clean)
 
+    tabular_dir = PLOTS_DIR.parent / "metrics"
+    save_tabular_eda(df_clean, tabular_dir)
 
-    # Generate EDA plots
-    plot_class_distribution(df_clean)  # Save class distribution
-    plot_numerical_distributions(df_clean)  # Save histograms
-    plot_correlation_heatmap(df_clean)  # Save correlation heatmap
+    # Optional MLflow logging
+    _try_log_eda_to_mlflow(PLOTS_DIR, tabular_dir)
 
-    # Save tabular EDA outputs
-    save_tabular_eda(df_clean, PLOTS_DIR.parent / "metrics")
-
-
-    # Print output paths for convenience
-    print("EDA plots saved to:", PLOTS_DIR)  # Confirmation
+    print("EDA plots saved to:", PLOTS_DIR)
+    print("EDA tables saved to:", tabular_dir)

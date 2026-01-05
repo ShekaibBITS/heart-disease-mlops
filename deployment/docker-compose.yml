@@ -9,11 +9,21 @@ services:
     ports:
       - "8000:8000"
     environment:
+      # Run-id based loading (your existing contract)
       MLFLOW_TRACKING_URI: "http://mlflow:5000"
-      MLFLOW_RUN_ID: "PUT_YOUR_RUN_ID_HERE"
+      MLFLOW_RUN_ID: "daa292a678244c1f855e7b181d824921"
       MLFLOW_MODEL_ARTIFACT_PATH: "model"
+      ADMIN_API_KEY: "supersecret"
+
+      # Keep API up even if model is not ready; retry in background
       MODEL_LOAD_RETRY: "true"
       MODEL_LOAD_RETRY_SECONDS: "20"
+
+      # MinIO/S3 support for MLflow artifacts (API reads model artifacts via S3)
+      MLFLOW_S3_ENDPOINT_URL: "http://minio:9000"
+      AWS_ACCESS_KEY_ID: "minioadmin"
+      AWS_SECRET_ACCESS_KEY: "minioadmin123"
+      AWS_DEFAULT_REGION: "us-east-1"
     depends_on:
       - mlflow
     healthcheck:
@@ -22,19 +32,85 @@ services:
       timeout: 5s
       retries: 5
 
+  postgres:
+    image: postgres:15
+    container_name: mlflow-postgres
+    environment:
+      POSTGRES_USER: mlflow
+      POSTGRES_PASSWORD: mlflow
+      POSTGRES_DB: mlflow
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mlflow -d mlflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    container_name: mlflow-minio
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  create-bucket:
+    image: minio/mc:latest
+    container_name: mlflow-minio-create-bucket
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      /usr/bin/mc alias set local http://minio:9000 minioadmin minioadmin123 &&
+      /usr/bin/mc mb -p local/mlflow || true
+      "
+
+  # Custom MLflow image to include psycopg2 (Postgres) + boto3 (S3/MinIO)
   mlflow:
-    image: ghcr.io/mlflow/mlflow:v2.12.1
+    build:
+      context: ..
+      dockerfile: deployment/docker/mlflow/Dockerfile
     container_name: mlflow
     ports:
       - "5000:5000"
-    command: >
-      mlflow server
-      --host 0.0.0.0
-      --port 5000
-      --backend-store-uri /mlruns
-      --artifacts-destination /mlruns
-    volumes:
-      - mlruns:/mlruns
+    environment:
+      MLFLOW_S3_ENDPOINT_URL: "http://minio:9000"
+      AWS_ACCESS_KEY_ID: "minioadmin"
+      AWS_SECRET_ACCESS_KEY: "minioadmin123"
+      AWS_DEFAULT_REGION: "us-east-1"
+    entrypoint: ["mlflow"]
+    command:
+      [
+        "server",
+        "--host", "0.0.0.0",
+        "--port", "5000",
+        "--backend-store-uri", "postgresql+psycopg2://mlflow:mlflow@postgres:5432/mlflow",
+        "--default-artifact-root", "s3://mlflow"
+      ]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      create-bucket:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
 
   prometheus:
     image: prom/prometheus:v2.52.0
@@ -58,7 +134,11 @@ services:
       - prometheus
     volumes:
       - grafana-data:/var/lib/grafana
+      # Grafana provisioning (datasource + dashboards auto-load)
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
 
 volumes:
-  mlruns:
+  pgdata:
+  minio_data:
   grafana-data:

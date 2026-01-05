@@ -1,48 +1,101 @@
-name: CI
+# File: .github/workflows/ci.yml
+# Purpose:
+#   Continuous Integration: enforce code quality + unit tests + end-to-end ML training smoke test.
+#
+# Key outputs (uploaded as GitHub artifacts):
+#   - artifacts/**        -> plots + metrics CSV/JSON
+#   - models/**           -> trained local models (joblib)
+#   - data/processed/**   -> processed dataset used by training
+#   - mlruns/**           -> MLflow runs (CI-only, file-based store)
+
+name: CI – Validate Code, Tests & ML Pipeline
 
 on:
   pull_request:
   push:
     branches: ["**"]
 
+# Prevent duplicate CI runs on the same branch from consuming minutes
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   ci:
+    name: CI Validation
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout
+      # -------------------------------
+      # 1) Checkout code
+      # -------------------------------
+      - name: Checkout repository source
         uses: actions/checkout@v4
 
-      - name: Setup Python
+      # -------------------------------
+      # 2) Setup Python (cache pip)
+      # -------------------------------
+      - name: Setup Python 3.10 (cached)
         uses: actions/setup-python@v5
         with:
           python-version: "3.10"
-          cache: "pip"
+          cache: pip
 
-      - name: Install deps
+      # -------------------------------
+      # 3) Install dependencies
+      # -------------------------------
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip setuptools wheel
           pip install -r requirements.txt
 
-      - name: Lint (ruff)
+      # -------------------------------
+      # 4) Linting
+      # -------------------------------
+      - name: Lint (Ruff)
         run: |
           ruff check .
 
-      - name: Unit tests
+      # -------------------------------
+      # 5) Unit tests
+      # -------------------------------
+      - name: Unit tests (Pytest)
         run: |
           pytest -q
 
-      # MLOps evidence: ensure pipeline runs in CI (use local file store for MLflow)
-      - name: Training smoke test
+      # -------------------------------
+      # 6) ML pipeline smoke test
+      #    - Uses MLflow file store so CI does not require MLflow server/MinIO.
+      #    - Skips EDA for faster runtime.
+      # -------------------------------
+      - name: ML pipeline smoke test (ingest + train, skip EDA)
         env:
+          # Highlight: environment identity for logs & behavior checks (optional use in code)
+          ENVIRONMENT: ci
+
+          # Highlight: Force file-based MLflow storage in CI
+          MLFLOW_USE_FILE_STORE: "true"
           MLFLOW_TRACKING_URI: "file:./mlruns"
+          MLFLOW_EXPERIMENT_NAME: "heart-disease-uci-ci"
+
+          # Highlight: Keep registry off in CI (registry typically needs server + DB)
+          MLFLOW_REGISTER_MODEL: "false"
         run: |
           python scripts/run_pipeline.py --skip-eda
 
-      - name: Upload artifacts (optional)
+      # -------------------------------
+      # 7) Upload artifacts even if prior steps fail
+      #    - Critical for debugging pipeline failures
+      # -------------------------------
+      - name: Upload CI artifacts (models, metrics, plots, mlruns)
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ci-artifacts
+          # Highlight: uniquely identify artifacts per workflow run
+          name: ci-artifacts-${{ github.run_id }}
+          if-no-files-found: warn
           path: |
             artifacts/**
+            models/**
+            data/processed/**
             mlruns/**

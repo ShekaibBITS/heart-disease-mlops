@@ -2,9 +2,8 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: heart-api
-  namespace: heart-mlops
 spec:
-  replicas: 1
+  replicas: 2   # production-grade (HA)
   selector:
     matchLabels:
       app: heart-api
@@ -12,36 +11,15 @@ spec:
     metadata:
       labels:
         app: heart-api
-      annotations:
-        prometheus.io/scrape: "true"
-        prometheus.io/path: "/metrics"
-        prometheus.io/port: "8000"
     spec:
       containers:
         - name: heart-api
-          image: heart-api:latest
-          imagePullPolicy: IfNotPresent
+          image: ghcr.io/raju55/heart-api:prod
+          imagePullPolicy: Always
           ports:
             - containerPort: 8000
-          envFrom:
-            - configMapRef:
-                name: heart-api-config
-          readinessProbe:
-            httpGet:
-              path: /health
-              port: 8000
-            initialDelaySeconds: 8
-            periodSeconds: 10
-          livenessProbe:
-            httpGet:
-              path: /health
-              port: 8000
-            initialDelaySeconds: 20
-            periodSeconds: 20
-          resources:
-            requests:
-              cpu: "100m"
-              memory: "256Mi"
-            limits:
-              cpu: "500m"
-              memory: "512Mi"
+          env:
+            - name: APP_ENV
+              value: "production"
+            - name: MLFLOW_TRACKING_URI
+              value: "http://mlflow:5000"
