@@ -1,0 +1,74 @@
+name: CD
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+  workflow_dispatch:
+
+jobs:
+  build_push:
+    # Run when:
+    # 1) Manual trigger OR
+    # 2) CI completed successfully AND branch is main or feature/api-endpoint
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       (github.event.workflow_run.head_branch == 'main' ||
+        github.event.workflow_run.head_branch == 'feadture-ap'))
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Set build variables (branch/sha)
+        id: vars
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            echo "BRANCH=${{ github.event.workflow_run.head_branch }}" >> $GITHUB_OUTPUT
+            echo "SHA=${{ github.event.workflow_run.head_sha }}" >> $GITHUB_OUTPUT
+            echo "REF=${{ github.event.workflow_run.head_sha }}" >> $GITHUB_OUTPUT
+          else
+            echo "BRANCH=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+            echo "SHA=${{ github.sha }}" >> $GITHUB_OUTPUT
+            echo "REF=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Checkout exact ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.vars.outputs.REF }}
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set image name
+        run: |
+          echo "IMAGE=ghcr.io/${{ github.repository_owner }}/heart-api" >> $GITHUB_ENV
+
+      - name: Build & Push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deployment/docker/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ steps.vars.outputs.BRANCH }}
+            ${{ env.IMAGE }}:${{ steps.vars.outputs.SHA }}
+            ${{ env.IMAGE }}:latest
+        # Only tag "latest" for main (prevents feature branch from overwriting stable image)
+        # Note: build-push-action doesn't support conditional tags directly, so we handle it by skipping
+        # "latest" with a separate step below if you want strict behavior.
+
+      # Optional: strict "latest only for main" (recommended).
+      # If you want this strict behavior, replace the Build & Push step above with two steps:
+      # - one step pushes BRANCH + SHA always
+      # - second step pushes LATEST only when BRANCH == main
