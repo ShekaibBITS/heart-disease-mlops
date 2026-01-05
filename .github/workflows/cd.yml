@@ -8,9 +8,6 @@ on:
 
 jobs:
   build_push:
-    # Run when:
-    # 1) Manual trigger OR
-    # 2) CI completed successfully AND branch is main or feature/api-endpoint
     if: >
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'workflow_run' &&
@@ -24,19 +21,30 @@ jobs:
       packages: write
 
     steps:
-      - name: Set build variables (branch/sha)
+      - name: Set build variables (branch/sha + safe tag)
         id: vars
         shell: bash
         run: |
           if [ "${{ github.event_name }}" = "workflow_run" ]; then
-            echo "BRANCH=${{ github.event.workflow_run.head_branch }}" >> $GITHUB_OUTPUT
-            echo "SHA=${{ github.event.workflow_run.head_sha }}" >> $GITHUB_OUTPUT
-            echo "REF=${{ github.event.workflow_run.head_sha }}" >> $GITHUB_OUTPUT
+            BRANCH="${{ github.event.workflow_run.head_branch }}"
+            SHA="${{ github.event.workflow_run.head_sha }}"
+            REF="${{ github.event.workflow_run.head_sha }}"
           else
-            echo "BRANCH=${{ github.ref_name }}" >> $GITHUB_OUTPUT
-            echo "SHA=${{ github.sha }}" >> $GITHUB_OUTPUT
-            echo "REF=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+            BRANCH="${{ github.ref_name }}"
+            SHA="${{ github.sha }}"
+            REF="${{ github.ref_name }}"
           fi
+
+          # Docker tag-safe branch:
+          # - lowercase
+          # - replace "/" with "-"
+          # - replace any remaining invalid characters with "-"
+          TAG_BRANCH="$(echo "$BRANCH" | tr '[:upper:]' '[:lower:]' | sed 's|/|-|g' | sed 's/[^a-z0-9_.-]/-/g')"
+
+          echo "BRANCH=$BRANCH" >> $GITHUB_OUTPUT
+          echo "TAG_BRANCH=$TAG_BRANCH" >> $GITHUB_OUTPUT
+          echo "SHA=$SHA" >> $GITHUB_OUTPUT
+          echo "REF=$REF" >> $GITHUB_OUTPUT
 
       - name: Checkout exact ref
         uses: actions/checkout@v4
@@ -54,21 +62,22 @@ jobs:
         run: |
           echo "IMAGE=ghcr.io/${{ github.repository_owner }}/heart-api" >> $GITHUB_ENV
 
-      - name: Build & Push
+      - name: Build & Push (branch + sha)
         uses: docker/build-push-action@v6
         with:
           context: .
           file: deployment/docker/Dockerfile
           push: true
           tags: |
-            ${{ env.IMAGE }}:${{ steps.vars.outputs.BRANCH }}
+            ${{ env.IMAGE }}:${{ steps.vars.outputs.TAG_BRANCH }}
             ${{ env.IMAGE }}:${{ steps.vars.outputs.SHA }}
-            ${{ env.IMAGE }}:latest
-        # Only tag "latest" for main (prevents feature branch from overwriting stable image)
-        # Note: build-push-action doesn't support conditional tags directly, so we handle it by skipping
-        # "latest" with a separate step below if you want strict behavior.
 
-      # Optional: strict "latest only for main" (recommended).
-      # If you want this strict behavior, replace the Build & Push step above with two steps:
-      # - one step pushes BRANCH + SHA always
-      # - second step pushes LATEST only when BRANCH == main
+      - name: Build & Push (latest - main only)
+        if: ${{ steps.vars.outputs.BRANCH == 'main' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deployment/docker/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:latest
