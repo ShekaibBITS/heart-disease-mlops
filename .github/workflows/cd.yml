@@ -1,43 +1,32 @@
-# File: .github/workflows/cd.yml
-# Purpose:
-#   Continuous Deployment: build and publish API Docker image to GHCR.
-#
-# Trigger:
-#   - Automatically after CI success (workflow_run)
-#   - Manual trigger (workflow_dispatch)
-#
-# Tags pushed:
-#   - <branch-safe>  (non-prod / testing)
-#   - <sha>          (immutable, best for deployments)
-#   - latest + prod  (main branch only)
-
 name: CD – Build & Publish API Image
 
 on:
   workflow_run:
+<<<<<<< HEAD
     # MUST match CI workflow "name:" exactly
     workflows: ["CI – Validate Code, Tests & ML Pipeline"]
+=======
+    workflows: ["CI"]
+>>>>>>> d17c0dbdbfd9efa70552884094d60fbe96fd7723
     types: [completed]
   workflow_dispatch:
 
-# Prevent two CD runs from fighting for tags
 concurrency:
+<<<<<<< HEAD
   group: cd-${{ github.event_name == 'workflow_run' && format('wr-{0}', github.event.workflow_run.head_branch) || format('wd-{0}', github.ref_name) }}
+=======
+  group: cd-${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || github.ref_name }}
+>>>>>>> d17c0dbdbfd9efa70552884094d60fbe96fd7723
   cancel-in-progress: true
 
 jobs:
   build_push:
     name: Build & Publish Container
 
-    # Run if:
-    #   - Manual trigger, OR
-    #   - CI succeeded AND branch is main OR feature/*
     if: >
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'workflow_run' &&
-       github.event.workflow_run.conclusion == 'success' &&
-       (github.event.workflow_run.head_branch == 'main' ||
-        startsWith(github.event.workflow_run.head_branch, 'feature/')))
+       github.event.workflow_run.conclusion == 'success')
 
     runs-on: ubuntu-latest
 
@@ -46,10 +35,7 @@ jobs:
       packages: write
 
     steps:
-      # -------------------------------
-      # 1) Resolve branch/sha + safe docker tag
-      # -------------------------------
-      - name: Resolve build metadata (branch/sha + docker-safe tag)
+      - name: Resolve build metadata
         id: vars
         shell: bash
         run: |
@@ -63,28 +49,18 @@ jobs:
             REF="${{ github.sha }}"
           fi
 
-          # Docker tag-safe branch:
-          # - lowercase
-          # - replace "/" with "-"
-          # - replace invalid chars with "-"
-          TAG_BRANCH="$(echo "$BRANCH" | tr '[:upper:]' '[:lower:]' | sed 's|/|-|g' | sed 's/[^a-z0-9_.-]/-/g')"
+          TAG_BRANCH="$(echo "$BRANCH" | tr '[:upper:]' '[:lower:]' | sed 's|/|-|g')"
 
           echo "BRANCH=$BRANCH" >> $GITHUB_OUTPUT
-          echo "TAG_BRANCH=$TAG_BRANCH" >> $GITHUB_OUTPUT
           echo "SHA=$SHA" >> $GITHUB_OUTPUT
           echo "REF=$REF" >> $GITHUB_OUTPUT
+          echo "TAG_BRANCH=$TAG_BRANCH" >> $GITHUB_OUTPUT
 
-      # -------------------------------
-      # 2) Checkout exact commit (immutable)
-      # -------------------------------
-      - name: Checkout exact ref (immutable)
+      - name: Checkout exact commit
         uses: actions/checkout@v4
         with:
           ref: ${{ steps.vars.outputs.REF }}
 
-      # -------------------------------
-      # 3) Login to GHCR
-      # -------------------------------
       - name: Login to GHCR
         uses: docker/login-action@v3
         with:
@@ -92,20 +68,12 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # -------------------------------
-      # 4) Define image name
-      #    - Must be lowercase for GHCR
-      # -------------------------------
-      - name: Define image name (lowercase owner)
-        shell: bash
+      - name: Define image name
         run: |
-          OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          echo "IMAGE=ghcr.io/${OWNER_LOWER}/heart-api" >> $GITHUB_ENV
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "IMAGE=ghcr.io/${OWNER}/heart-api" >> $GITHUB_ENV
 
-      # -------------------------------
-      # 5) Build & push immutable + branch tags (non-prod)
-      # -------------------------------
-      - name: Build & Push Image (non-prod: branch + sha tags)
+      - name: Build & Push image
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -114,11 +82,11 @@ jobs:
           build-args: |
             APP_ENV=nonprod
             GIT_SHA=${{ steps.vars.outputs.SHA }}
-            GIT_REF=${{ steps.vars.outputs.BRANCH }}
           tags: |
-            ${{ env.IMAGE }}:${{ steps.vars.outputs.TAG_BRANCH }}
             ${{ env.IMAGE }}:${{ steps.vars.outputs.SHA }}
+            ${{ env.IMAGE }}:${{ steps.vars.outputs.TAG_BRANCH }}
 
+<<<<<<< HEAD
       # -------------------------------
       # 6) Build & push production tags (main only)
       # -------------------------------
@@ -142,5 +110,8 @@ jobs:
       # -------------------------------
       - name: Verify pushed image (sha tag)
         shell: bash
+=======
+      - name: Verify image
+>>>>>>> d17c0dbdbfd9efa70552884094d60fbe96fd7723
         run: |
           docker manifest inspect ${{ env.IMAGE }}:${{ steps.vars.outputs.SHA }} > /dev/null

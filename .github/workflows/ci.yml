@@ -1,13 +1,12 @@
 # File: .github/workflows/ci.yml
 # Purpose:
-#   Continuous Integration: enforce code quality + unit tests
-#   + end-to-end ML pipeline run with MLflow tracking.
+#   Continuous Integration: enforce code quality + unit tests + (optional) end-to-end ML pipeline.
 #
 # Key outputs (uploaded as GitHub artifacts):
-#   - artifacts/**        -> plots + metrics JSON/CSV
-#   - models/**           -> trained models (joblib / pickle)
-#   - data/processed/**   -> processed dataset
-#   - mlruns/**           -> MLflow runs (file-based, CI only)
+#   - artifacts/**        -> plots + metrics CSV/JSON
+#   - models/**           -> trained local models (joblib)
+#   - data/processed/**   -> processed dataset used by training
+#   - mlruns/**           -> MLflow runs (CI-only, file-based store)
 
 name: CI – Validate Code, Tests & ML Pipeline
 
@@ -16,7 +15,7 @@ on:
   push:
     branches: ["**"]
 
-# Prevent duplicate CI runs on the same branch
+# Prevent duplicate CI runs on the same branch from consuming minutes
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -28,13 +27,13 @@ jobs:
 
     steps:
       # -------------------------------
-      # 1) Checkout repository
+      # 1) Checkout code
       # -------------------------------
       - name: Checkout repository source
         uses: actions/checkout@v4
 
       # -------------------------------
-      # 2) Setup Python
+      # 2) Setup Python (cache pip)
       # -------------------------------
       - name: Setup Python 3.10 (cached)
         uses: actions/setup-python@v5
@@ -43,7 +42,8 @@ jobs:
           cache: pip
 
       # -------------------------------
-      # 3) Install dependencies
+      # 3) Install dependencies + install local package (heartml)
+      #    - pip install -e . is REQUIRED so `python -m heartml...` works in CI
       # -------------------------------
       - name: Install dependencies
         run: |
@@ -52,7 +52,7 @@ jobs:
           pip install -e .
 
       # -------------------------------
-      # 3.1) Import sanity check
+      # 3.1) Sanity import check (fast fail if packaging path is wrong)
       # -------------------------------
       - name: Import check (heartml)
         run: |
@@ -73,23 +73,26 @@ jobs:
           pytest -q
 
       # -------------------------------
-      # 6) Full ML pipeline run
-      #    - Includes ingest + EDA + train + evaluate
-      #    - MLflow uses file-based backend (no external services)
+      # 6) ML pipeline smoke test (DISABLED)
+      #    - Kept for documentation/reference.
+      #    - Enable later by changing `if: false` to `if: true` (or a condition).
+      #    - Uses MLflow file store so CI does not require MLflow server/MinIO.
       # -------------------------------
-      - name: Run full ML pipeline with MLflow tracking
+      - name: ML pipeline smoke test (ingest + train)
+        if: false
         env:
           ENVIRONMENT: ci
-          MLFLOW_TRACKING_URI: file:./mlruns
-          MLFLOW_EXPERIMENT_NAME: heart-disease-uci-ci
+          MLFLOW_USE_FILE_STORE: "true"
+          MLFLOW_TRACKING_URI: "file:./mlruns"
+          MLFLOW_EXPERIMENT_NAME: "heart-disease-uci-ci"
           MLFLOW_REGISTER_MODEL: "false"
         run: |
           python scripts/run_pipeline.py
 
       # -------------------------------
-      # 7) Upload artifacts (always)
+      # 7) Upload artifacts even if prior steps fail
       # -------------------------------
-      - name: Upload CI artifacts
+      - name: Upload CI artifacts (models, metrics, plots, mlruns)
         if: always()
         uses: actions/upload-artifact@v4
         with:
