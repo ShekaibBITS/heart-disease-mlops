@@ -1,6 +1,5 @@
 # tests/test_training_smoke.py
 
-import os
 import pandas as pd
 
 from src.heartml import config, data_ingest
