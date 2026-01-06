@@ -1,16 +1,31 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: heart-api-ingress
+  name: heart-mlops-ingress
+  namespace: heart-mlops
 spec:
   rules:
-    - host: heart-api.local
+    - host: heart-mlops.local
       http:
         paths:
-          - path: /
+          - path: /api
             pathType: Prefix
             backend:
               service:
-                name: heart-api-service
+                name: heart-api-lb
                 port:
                   number: 80
+          - path: /mlflow
+            pathType: Prefix
+            backend:
+              service:
+                name: mlflow
+                port:
+                  number: 5000
+          - path: /minio
+            pathType: Prefix
+            backend:
+              service:
+                name: minio
+                port:
+                  number: 9001

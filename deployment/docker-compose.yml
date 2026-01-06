@@ -9,10 +9,11 @@ services:
     ports:
       - "8000:8000"
     environment:
-      # Run-id based loading (your existing contract)
+      # Registry-based loading (recommended production contract)
       MLFLOW_TRACKING_URI: "http://mlflow:5000"
-      MLFLOW_RUN_ID: "daa292a678244c1f855e7b181d824921"
-      MLFLOW_MODEL_ARTIFACT_PATH: "model"
+      MLFLOW_MODEL_NAME: "heart-disease"
+      MLFLOW_MODEL_STAGE: "Production"
+
       ADMIN_API_KEY: "supersecret"
 
       # Keep API up even if model is not ready; retry in background

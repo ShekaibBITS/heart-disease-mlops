@@ -4,11 +4,16 @@ metadata:
   name: heart-api-config
   namespace: heart-mlops
 data:
-  # Keep API alive even if model is not loaded yet (your current behavior)
+  APP_ENV: "production"
+
   MODEL_LOAD_RETRY: "true"
   MODEL_LOAD_RETRY_SECONDS: "20"
 
-  # If serving loads model from MLflow at runtime (optional):
-  # MLFLOW_TRACKING_URI: "http://mlflow:5000"
-  # MLFLOW_RUN_ID: "PUT_RUN_ID"
-  # MLFLOW_MODEL_ARTIFACT_PATH: "model"
+  # Registry-based serving
+  MLFLOW_TRACKING_URI: "http://mlflow:5000"
+  MLFLOW_MODEL_NAME: "heart-disease"
+  MLFLOW_MODEL_STAGE: "Production"
+
+  # MinIO/S3 artifact access (required for your setup)
+  MLFLOW_S3_ENDPOINT_URL: "http://minio:9000"
+  AWS_DEFAULT_REGION: "us-east-1"

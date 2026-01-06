@@ -1,13 +1,13 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: heart-api-lb
+  name: mlflow
   namespace: heart-mlops
 spec:
-  type: LoadBalancer
   selector:
-    app: heart-api
+    app: mlflow
   ports:
     - name: http
-      port: 80
-      targetPort: 8000
+      port: 5000
+      targetPort: 5000
+  type: ClusterIP

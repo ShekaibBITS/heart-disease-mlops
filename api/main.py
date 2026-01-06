@@ -40,6 +40,7 @@ from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 from prometheus_client import Counter, Gauge, Histogram
 from prometheus_fastapi_instrumentator import Instrumentator
+
 from api.routes.admin_pipeline import router as admin_router
 
 
@@ -95,7 +96,7 @@ class PredictResponse(BaseModel):
 # App + model state
 # -----------------------------
 app = FastAPI(title="Heart Disease Prediction API", version="1.0.0")
-app.include_router(admin_router) 
+app.include_router(admin_router)
 
 MODEL: Optional[mlflow.pyfunc.PyFuncModel] = None
 MODEL_URI: Optional[str] = None
@@ -132,38 +133,35 @@ def _configure_mlflow_from_env() -> None:
     if tracking_uri:
         mlflow.set_tracking_uri(tracking_uri)
 
-    # Important for MinIO-backed artifacts: these are read by boto3/MLflow internally.
-    # If not provided, no error is raised here.
-    # MLFLOW_S3_ENDPOINT_URL / AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_DEFAULT_REGION
-    # are already set via docker-compose env; we do not need to set them again in code.
-
 
 def _resolve_mlflow_model_uri() -> str:
     """
-    Resolve MLflow model URI from env.
-    Supported:
-      A) runs:/<RUN_ID>/<artifact_path>  (your current deployment contract)
-      B) models:/<MODEL_NAME>/<STAGE>    (optional; does not break A)
+    Serving resolution (recommended):
+      1) Prefer Model Registry (stable deployment contract)
+      2) Allow run_id override for debugging/pinning
     """
     _configure_mlflow_from_env()
-
-    run_id = (os.getenv("MLFLOW_RUN_ID") or "").strip()
-    artifact_path = (os.getenv("MLFLOW_MODEL_ARTIFACT_PATH") or "model").strip()
 
     model_name = (os.getenv("MLFLOW_MODEL_NAME") or "").strip()
     model_stage = (os.getenv("MLFLOW_MODEL_STAGE") or "Production").strip()
 
-    if run_id:
-        return f"runs:/{run_id}/{artifact_path}"
+    run_id = (os.getenv("MLFLOW_RUN_ID") or "").strip()
+    artifact_path = (os.getenv("MLFLOW_MODEL_ARTIFACT_PATH") or "model").strip()
+
+    # 1) Default: registry
     if model_name:
         return f"models:/{model_name}/{model_stage}"
 
+    # 2) Fallback: pinned run (debug/demo)
+    if run_id:
+        return f"runs:/{run_id}/{artifact_path}"
+
     raise ValueError(
-        "No MLflow model reference configured. Set either:\n"
-        "- MLFLOW_RUN_ID (+ optional MLFLOW_MODEL_ARTIFACT_PATH)\n"
-        "or\n"
-        "- MLFLOW_MODEL_NAME (+ optional MLFLOW_MODEL_STAGE)\n"
-        "Optionally set MLFLOW_TRACKING_URI (recommended in Docker/K8s)."
+        "No model reference configured. Recommended:\n"
+        "- Set MLFLOW_MODEL_NAME and (optional) MLFLOW_MODEL_STAGE\n"
+        "Optional debug override:\n"
+        "- Set MLFLOW_RUN_ID and (optional) MLFLOW_MODEL_ARTIFACT_PATH\n"
+        "Also set MLFLOW_TRACKING_URI."
     )
 
 
@@ -183,7 +181,6 @@ def _try_load_model_once() -> None:
         MODEL_URI = uri
         logger.info(f"Attempting MLflow model load from: {uri}")
 
-        # Load model
         m = mlflow.pyfunc.load_model(uri)
 
         MODEL = m
@@ -217,51 +214,83 @@ def _background_model_loader(retry_seconds: int = 30) -> None:
 
 def _extract_probability(pred_output: Any) -> float:
     """
-    Robustly extract probability-of-positive-class from MLflow pyfunc output.
+    Extract probability-of-positive-class robustly from MLflow pyfunc output.
 
-    Accepts common formats:
-    - list/np array: [0.83]
-    - pandas DataFrame with column 'proba'
-    - list of dicts: [{'proba': 0.83, ...}]
-    - dict-like with 'proba'
-    - scalar numeric
+    Handles common MLflow outputs:
+    - pandas DataFrame with: 'proba' OR 'probability' OR 'p1' OR 'score'
+    - dict with one of the above keys
+    - list/array:
+        * [p1]
+        * [[p0, p1]] or [p0, p1]  -> returns p1
+        * numpy array shape (n,2) -> returns [:,1]
+        * numpy array shape (n,1) -> returns [:,0]
     """
-    # DataFrame with 'proba'
+    # 1) DataFrame columns
     try:
-        if hasattr(pred_output, "columns") and "proba" in pred_output.columns:
-            return float(pred_output["proba"].iloc[0])
+        if hasattr(pred_output, "columns"):
+            for col in ("proba", "probability", "p1", "score"):
+                if col in pred_output.columns:
+                    return float(pred_output[col].iloc[0])
     except Exception:
         pass
 
-    # dict-like
+    # 2) dict-like
     try:
-        if isinstance(pred_output, dict) and "proba" in pred_output:
-            return float(pred_output["proba"])
+        if isinstance(pred_output, dict):
+            for key in ("proba", "probability", "p1", "score"):
+                if key in pred_output:
+                    return float(pred_output[key])
     except Exception:
         pass
 
-    # list of dicts
+    # 3) list of dicts
     try:
         if isinstance(pred_output, list) and pred_output and isinstance(pred_output[0], dict):
-            if "proba" in pred_output[0]:
-                return float(pred_output[0]["proba"])
+            for key in ("proba", "probability", "p1", "score"):
+                if key in pred_output[0]:
+                    return float(pred_output[0][key])
     except Exception:
         pass
 
-    # list/array/series
+    # 4) list handling (common: [p1] OR [p0,p1] OR [[p0,p1]])
     try:
-        return float(pred_output[0])
+        if isinstance(pred_output, list):
+            if len(pred_output) == 1:
+                one = pred_output[0]
+                if isinstance(one, list) and len(one) >= 2 and all(isinstance(v, (int, float)) for v in one[:2]):
+                    return float(one[1])  # p1
+                if isinstance(one, (int, float)):
+                    return float(one)
+            if len(pred_output) >= 2 and all(isinstance(v, (int, float)) for v in pred_output[:2]):
+                # [p0, p1]
+                return float(pred_output[1])
     except Exception:
         pass
 
-    # scalar
+    # 5) numpy/pandas array-like shapes
+    try:
+        import numpy as np
+
+        arr = np.asarray(pred_output)
+        if arr.ndim == 0:
+            return float(arr)
+        if arr.ndim == 1:
+            return float(arr[0])
+        if arr.ndim == 2:
+            if arr.shape[1] == 1:
+                return float(arr[0, 0])
+            # assume proba matrix -> pick positive class (index 1)
+            return float(arr[0, 1])
+    except Exception:
+        pass
+
+    # 6) scalar fallback
     try:
         return float(pred_output)
-    except Exception:
+    except Exception as e:
         raise ValueError(
-            "Unsupported MLflow prediction output format. "
-            "Standardize your logged model to return probability (recommended: array/list scalar or DF/dict with 'proba')."
-        )
+            "Unsupported MLflow prediction output format for probability extraction."
+        ) from e
 
 
 # -----------------------------
@@ -341,7 +370,7 @@ def predict(req: PredictRequest) -> PredictResponse:
         INFERENCE_LATENCY_SECONDS.observe(time.time() - start)
 
     pred = int(p1 >= 0.5)
-   
+
     return PredictResponse(
         prediction=pred,
         confidence=p1,

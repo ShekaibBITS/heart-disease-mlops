@@ -4,9 +4,9 @@ Central configuration constants used across ingestion, preprocessing, training,
 evaluation, and serving.
 
 Key updates:
-- Default MLflow tracking is a RUNNING SERVER (http://localhost:5000).
-- Always allow env var override (Docker: http://mlflow:5000, K8s: http://mlflow:5000).
-- Keep a file-based URI available as a fallback option (useful for CI/offline).
+- Server-first MLflow tracking URI with env override.
+- Registry-first model serving defaults (Production stage).
+- Keep runs:/... artifact path available for fallback/debug.
 """
 
 from __future__ import annotations
@@ -132,19 +132,29 @@ MLFLOW_USE_FILE_STORE = _env_bool("MLFLOW_USE_FILE_STORE", "false")
 _default_tracking = "http://localhost:5000"
 MLFLOW_TRACKING_URI = _env_str("MLFLOW_TRACKING_URI", _default_tracking)
 
-# If user wants explicit file store mode (CI/offline), override tracking URI.
 if MLFLOW_USE_FILE_STORE:
     MLFLOW_TRACKING_URI = MLFLOW_FILE_TRACKING_URI
 
-# Standardize model artifact path (API expects runs:/<RUN_ID>/<artifact_path>)
+# Standardize model artifact path for runs:/ URIs
 MLFLOW_MODEL_ARTIFACT_PATH = _env_str("MLFLOW_MODEL_ARTIFACT_PATH", "model")
 
-# MLflow Registry (optional / non-breaking)
-MLFLOW_REGISTER_MODEL = _env_bool("MLFLOW_REGISTER_MODEL", "false")
-MLFLOW_MODEL_NAME = _env_str("MLFLOW_MODEL_NAME", "heart_disease_classifier")
+# -----------------------------------------------------------------------------
+# MLflow Model Registry (enabled by default)
+# -----------------------------------------------------------------------------
+# CHANGED: Keep enabled by default as you want registry-based serving.
+MLFLOW_REGISTER_MODEL = _env_bool("MLFLOW_REGISTER_MODEL", "true")
+
+# CHANGED: Make the default model name aligned with your earlier discussion ("heart-disease"),
+# but still env-overridable.
+# IMPORTANT: Whatever name you choose here must be the same name used by API serving.
+MLFLOW_MODEL_NAME = _env_str("MLFLOW_MODEL_NAME", "heart-disease")
+
+# CHANGED: Default stage to Production for serving readiness.
+# Training may initially push to Staging; you can still override via env.
+# If you want training->Staging and serving->Production, set env accordingly per container.
+MLFLOW_MODEL_STAGE = _env_str("MLFLOW_MODEL_STAGE", "Production")
 
 # Allow disabling stage transition by setting empty string:
 #   MLFLOW_MODEL_STAGE=""  -> no transition call will be made
-MLFLOW_MODEL_STAGE = _env_str("MLFLOW_MODEL_STAGE", "Staging")
 if MLFLOW_MODEL_STAGE.strip() == "":
     MLFLOW_MODEL_STAGE = ""

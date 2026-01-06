@@ -88,6 +88,23 @@ def _safe_mlflow_set_tags(tags: Dict[str, Any]) -> None:
 
 
 # -----------------------------
+# MLflow metric logging (safe)
+# -----------------------------
+def _log_metric_safe_batch(metrics: Dict[str, float], step: int = 0) -> None:
+    """
+    Logs metrics with unique timestamps per key to avoid backend-store
+    duplicate-key collisions (metric_pk) in Postgres.
+
+    Behavior: metric values unchanged; only insertion metadata differs.
+    """
+    base_ts = int(datetime.now(timezone.utc).timestamp() * 1000)
+    i = 0
+    for k, v in metrics.items():
+        mlflow.log_metric(k, float(v), step=step, timestamp=base_ts + i)
+        i += 1
+
+
+# -----------------------------
 # Metrics
 # -----------------------------
 def evaluate_model(name: str, model, X_train, y_train, X_test, y_test) -> dict:
@@ -208,23 +225,29 @@ def log_model_run(
             for k, v in extra_params.items():
                 mlflow.log_param(k, v)
 
-        # CV summary
-        mlflow.log_metric("cv_accuracy_mean", float(cv_mean))
-        mlflow.log_metric("cv_accuracy_std", float(cv_std))
+        # Metrics (safe batch insert; unique timestamps)
+        _log_metric_safe_batch(
+            {
+                # CV summary
+                "cv_accuracy_mean": float(cv_mean),
+                "cv_accuracy_std": float(cv_std),
 
-        # Train metrics
-        mlflow.log_metric("train_accuracy", float(train_metrics["accuracy"]))
-        mlflow.log_metric("train_precision", float(train_metrics["precision"]))
-        mlflow.log_metric("train_recall", float(train_metrics["recall"]))
-        mlflow.log_metric("train_f1", float(train_metrics["f1"]))
-        mlflow.log_metric("train_roc_auc", float(train_metrics.get("roc_auc", float("nan"))))
+                # Train metrics
+                "train_accuracy": float(train_metrics["accuracy"]),
+                "train_precision": float(train_metrics["precision"]),
+                "train_recall": float(train_metrics["recall"]),
+                "train_f1": float(train_metrics["f1"]),
+                "train_roc_auc": float(train_metrics.get("roc_auc", float("nan"))),
 
-        # Test metrics
-        mlflow.log_metric("test_accuracy", float(test_metrics["accuracy"]))
-        mlflow.log_metric("test_precision", float(test_metrics["precision"]))
-        mlflow.log_metric("test_recall", float(test_metrics["recall"]))
-        mlflow.log_metric("test_f1", float(test_metrics["f1"]))
-        mlflow.log_metric("test_roc_auc", float(test_metrics.get("roc_auc", float("nan"))))
+                # Test metrics
+                "test_accuracy": float(test_metrics["accuracy"]),
+                "test_precision": float(test_metrics["precision"]),
+                "test_recall": float(test_metrics["recall"]),
+                "test_f1": float(test_metrics["f1"]),
+                "test_roc_auc": float(test_metrics.get("roc_auc", float("nan"))),
+            },
+            step=0,
+        )
 
         # Artifacts (plots/metrics)
         if PLOTS_DIR.exists():
@@ -259,7 +282,7 @@ def main() -> None:
     configure_mlflow()
 
     # Parent run: pipeline-level lineage + decision
-    with mlflow.start_run(run_name="train_pipeline") as parent:
+    with mlflow.start_run(run_name="train_pipeline"):
         mlflow.set_tag("stage", "training_pipeline")
 
         # Load + lineage
