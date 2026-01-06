@@ -15,14 +15,14 @@ name: CD – Build & Publish API Image
 
 on:
   workflow_run:
-    # Highlight: this MUST match CI workflow "name:" exactly
+    # MUST match CI workflow "name:" exactly
     workflows: ["CI – Validate Code, Tests & ML Pipeline"]
     types: [completed]
   workflow_dispatch:
 
 # Prevent two CD runs from fighting for tags
 concurrency:
-  group: cd-${{ github.ref }}
+  group: cd-${{ github.event_name == 'workflow_run' && format('wr-{0}', github.event.workflow_run.head_branch) || format('wd-{0}', github.ref_name) }}
   cancel-in-progress: true
 
 jobs:
@@ -40,7 +40,6 @@ jobs:
         startsWith(github.event.workflow_run.head_branch, 'feature/')))
 
     runs-on: ubuntu-latest
-
 
     permissions:
       contents: read
@@ -61,7 +60,7 @@ jobs:
           else
             BRANCH="${{ github.ref_name }}"
             SHA="${{ github.sha }}"
-            REF="${{ github.ref_name }}"
+            REF="${{ github.sha }}"
           fi
 
           # Docker tag-safe branch:
@@ -81,7 +80,6 @@ jobs:
       - name: Checkout exact ref (immutable)
         uses: actions/checkout@v4
         with:
-          ref: ${{ steps.vars.outputs.REF }}
           ref: ${{ steps.vars.outputs.REF }}
 
       # -------------------------------
@@ -114,7 +112,6 @@ jobs:
           file: deployment/docker/Dockerfile
           push: true
           build-args: |
-            # Highlight: runtime env tagging for logs / metrics labels
             APP_ENV=nonprod
             GIT_SHA=${{ steps.vars.outputs.SHA }}
             GIT_REF=${{ steps.vars.outputs.BRANCH }}
@@ -124,8 +121,6 @@ jobs:
 
       # -------------------------------
       # 6) Build & push production tags (main only)
-      #    - latest  -> convenience
-      #    - prod    -> explicit production intent (recommended)
       # -------------------------------
       - name: Build & Push Image (prod: latest + prod tags)
         if: ${{ steps.vars.outputs.BRANCH == 'main' }}
