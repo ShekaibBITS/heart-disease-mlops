@@ -3,7 +3,6 @@
 # - Validates that training produces expected artifacts.
 # - CI-safe: isolates outputs into tmp_path and avoids path/CWD issues.
 
-from pathlib import Path
 
 import pandas as pd
 
