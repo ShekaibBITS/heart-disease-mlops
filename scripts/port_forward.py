@@ -1,100 +1,265 @@
-import subprocess
+#!/usr/bin/env python3
+"""
+scripts/port_forward.py
+
+Purpose
+- Start/stop/status Kubernetes port-forwards in an automated way for local demo/screenshots.
+- Uses PID files to manage background kubectl port-forward processes.
+
+Usage examples
+- Start all:
+    python scripts/port_forward.py start
+- Stop all:
+    python scripts/port_forward.py stop
+- Status:
+    python scripts/port_forward.py status
+- Start one:
+    python scripts/port_forward.py start mlflow
+"""
+
+from __future__ import annotations
+
 import os
 import sys
 import signal
-import time
+import subprocess
+from dataclasses import dataclass
+from typing import Dict, Optional
+
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PID_DIR = os.path.join(BASE_DIR, ".pids")
-
 os.makedirs(PID_DIR, exist_ok=True)
 
-PORT_FORWARDS = [
-    # name, namespace, service, local_port, remote_port
-    ("api",        "heart-mlops", "heart-api-lb", 8000, 80),
-    ("mlflow",     "heart-mlops", "mlflow",       5000, 5000),
-    ("minio-s3",   "heart-mlops", "minio",        9000, 9000),
-    ("minio-ui",   "heart-mlops", "minio",        9001, 9001),
-    ("prometheus", "monitoring",  "prometheus",   9090, 9090),
-    ("grafana",    "monitoring",  "grafana",      3000, 3000),
-]
 
-def pid_file(name):
+@dataclass(frozen=True)
+class PortForwardSpec:
+    name: str
+    namespace: str
+    resource: str  # service/<name> or pod/<name>
+    local_port: int
+    remote_port: int
+
+
+# Update these to match your services/namespaces
+SPECS: Dict[str, PortForwardSpec] = {
+    "heart-api": PortForwardSpec(
+        name="heart-api",
+        namespace="default",
+        resource="service/heart-api",
+        local_port=8000,
+        remote_port=8000,
+    ),
+    "mlflow": PortForwardSpec(
+        name="mlflow",
+        namespace="default",
+        resource="service/mlflow",
+        local_port=5000,
+        remote_port=5000,
+    ),
+    "minio-api": PortForwardSpec(
+        name="minio-api",
+        namespace="default",
+        resource="service/minio",
+        local_port=9000,
+        remote_port=9000,
+    ),
+    "minio-console": PortForwardSpec(
+        name="minio-console",
+        namespace="default",
+        resource="service/minio",
+        local_port=9001,
+        remote_port=9001,
+    ),
+    "prometheus": PortForwardSpec(
+        name="prometheus",
+        namespace="monitoring",
+        resource="service/prometheus",
+        local_port=9090,
+        remote_port=9090,
+    ),
+    "grafana": PortForwardSpec(
+        name="grafana",
+        namespace="monitoring",
+        resource="service/grafana",
+        local_port=3000,
+        remote_port=3000,
+    ),
+}
+
+
+def pid_file(name: str) -> str:
     return os.path.join(PID_DIR, f"{name}.pid")
 
-def is_running(pid):
+
+def is_pid_running(pid: int) -> bool:
+    """
+    Check whether a PID exists.
+    Works on Unix-like systems. For Windows, this method is not reliable.
+    """
+    if pid <= 0:
+        return False
     try:
         os.kill(pid, 0)
         return True
-    except:
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        # PID exists but we may not have permission to signal it
+        return True
+    except OSError:
         return False
 
-def start_forward(name, namespace, service, local_port, remote_port):
-    pid_path = pid_file(name)
 
-    if os.path.exists(pid_path):
-        with open(pid_path) as f:
-            old_pid = int(f.read().strip())
-        if is_running(old_pid):
-            print(f"[SKIP] {name} already running (PID {old_pid})")
-            return
-        else:
-            os.remove(pid_path)
+def read_pid(path: str) -> Optional[int]:
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            raw = f.read().strip()
+        return int(raw)
+    except FileNotFoundError:
+        return None
+    except ValueError:
+        return None
+    except OSError:
+        return None
+
+
+def write_pid(path: str, pid: int) -> None:
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(str(pid))
+
+
+def remove_pidfile_safely(path: str) -> None:
+    try:
+        os.remove(path)
+    except FileNotFoundError:
+        return
+    except OSError:
+        return
+
+
+def start_one(spec: PortForwardSpec) -> None:
+    path = pid_file(spec.name)
+    existing_pid = read_pid(path)
+
+    if existing_pid is not None and is_pid_running(existing_pid):
+        print(f"[SKIP] {spec.name} already running (PID {existing_pid})")
+        return
+
+    # If pidfile exists but process is dead, remove stale file.
+    if existing_pid is not None and not is_pid_running(existing_pid):
+        remove_pidfile_safely(path)
 
     cmd = [
-        "kubectl", "port-forward",
-        "-n", namespace,
-        f"svc/{service}",
-        f"{local_port}:{remote_port}",
-        "--address", "127.0.0.1"
+        "kubectl",
+        "-n",
+        spec.namespace,
+        "port-forward",
+        spec.resource,
+        f"{spec.local_port}:{spec.remote_port}",
     ]
 
+    # Start in background with stdout/stderr redirected (prevents terminal lock)
     proc = subprocess.Popen(
         cmd,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
-        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
+        start_new_session=True,  # creates separate process group
     )
 
-    with open(pid_path, "w") as f:
-        f.write(str(proc.pid))
+    write_pid(path, proc.pid)
+    print(
+        f"[STARTED] {spec.name} -> http://localhost:{spec.local_port} "
+        f"(PID {proc.pid}, {spec.namespace}/{spec.resource} {spec.local_port}:{spec.remote_port})"
+    )
 
-    print(f"[STARTED] {name:<12} -> http://127.0.0.1:{local_port} (PID {proc.pid})")
 
-def stop_all():
-    print("Stopping all port-forwards...")
-    for file in os.listdir(PID_DIR):
-        if not file.endswith(".pid"):
-            continue
-        path = os.path.join(PID_DIR, file)
-        name = file.replace(".pid", "")
-        with open(path) as f:
-            pid = int(f.read().strip())
-        try:
-            os.kill(pid, signal.SIGTERM)
-            print(f"[STOPPED] {name} (PID {pid})")
-        except:
-            print(f"[FAILED] {name} (PID {pid})")
-        os.remove(path)
+def stop_one(spec: PortForwardSpec) -> None:
+    path = pid_file(spec.name)
+    pid = read_pid(path)
 
-def main():
-    if len(sys.argv) > 1 and sys.argv[1] == "stop":
-        stop_all()
+    if pid is None:
+        print(f"[SKIP] {spec.name} not running (no pidfile)")
         return
 
-    print("Starting Kubernetes port-forwards...\n")
+    if not is_pid_running(pid):
+        print(f"[CLEANUP] {spec.name} pidfile exists but PID {pid} not running")
+        remove_pidfile_safely(path)
+        return
 
-    for pf in PORT_FORWARDS:
-        start_forward(*pf)
+    try:
+        os.kill(pid, signal.SIGTERM)
+        print(f"[STOPPED] {spec.name} (PID {pid})")
+    except ProcessLookupError:
+        print(f"[CLEANUP] {spec.name} PID {pid} not found")
+    except PermissionError:
+        print(f"[FAILED] {spec.name} (PID {pid}) permission denied")
+    except OSError as e:
+        print(f"[FAILED] {spec.name} (PID {pid}) OS error: {e}")
+    finally:
+        remove_pidfile_safely(path)
 
-    print("\nCentral endpoints:")
-    print(" API        : http://127.0.0.1:8000")
-    print(" MLflow     : http://127.0.0.1:5000")
-    print(" MinIO S3   : http://127.0.0.1:9000")
-    print(" MinIO UI   : http://127.0.0.1:9001")
-    print(" Prometheus : http://127.0.0.1:9090")
-    print(" Grafana    : http://127.0.0.1:3000")
-    print("\nPress Ctrl+C to exit (port-forwards stay running)")
+
+def status_one(spec: PortForwardSpec) -> None:
+    path = pid_file(spec.name)
+    pid = read_pid(path)
+
+    if pid is None:
+        print(f"[DOWN] {spec.name} (no pidfile)")
+        return
+
+    if is_pid_running(pid):
+        print(f"[UP]   {spec.name} (PID {pid}) -> http://localhost:{spec.local_port}")
+    else:
+        print(f"[DOWN] {spec.name} (stale pidfile PID {pid})")
+        remove_pidfile_safely(path)
+
+
+def usage() -> None:
+    names = ", ".join(sorted(SPECS.keys()))
+    print(
+        "Usage:\n"
+        "  python scripts/port_forward.py start [name|all]\n"
+        "  python scripts/port_forward.py stop [name|all]\n"
+        "  python scripts/port_forward.py status [name|all]\n\n"
+        f"Names: {names}"
+    )
+
+
+def main() -> int:
+    if len(sys.argv) < 2:
+        usage()
+        return 2
+
+    action = sys.argv[1].lower()
+    target = sys.argv[2].lower() if len(sys.argv) >= 3 else "all"
+
+    if target != "all" and target not in SPECS:
+        print(f"[ERROR] Unknown target '{target}'")
+        usage()
+        return 2
+
+    specs = list(SPECS.values()) if target == "all" else [SPECS[target]]
+
+    if action == "start":
+        for s in specs:
+            start_one(s)
+        return 0
+
+    if action == "stop":
+        for s in specs:
+            stop_one(s)
+        return 0
+
+    if action == "status":
+        for s in specs:
+            status_one(s)
+        return 0
+
+    print(f"[ERROR] Unknown action '{action}'")
+    usage()
+    return 2
+
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
